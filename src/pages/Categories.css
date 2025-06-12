@@ -1,0 +1,32 @@
+.custom-table .ant-table-thead > tr > th {
+  background-color: #1890ff !important;
+  color: white !important;
+}
+
+.custom-table .ant-table-thead > tr > th:hover {
+  background-color: #40a9ff !important;
+}
+
+.custom-table .ant-table-tbody > tr > td {
+  background-color: white;
+}
+
+.custom-table .ant-table-tbody > tr:hover > td {
+  background-color: #e6f7ff !important;
+}
+
+.custom-table .ant-table-row-expand-icon {
+  display: none !important;
+}
+
+.custom-table .ant-table-thead > tr > th .ant-table-column-sorter {
+  color: white;
+}
+
+.custom-table .ant-table-thead > tr > th .ant-table-filter-trigger {
+  color: white;
+}
+
+.custom-table .ant-table-thead > tr > th .ant-table-column-title {
+  color: white;
+} 
