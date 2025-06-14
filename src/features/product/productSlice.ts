@@ -143,6 +143,14 @@ export const createProduct = createAsyncThunk(
   }
 );
 
+export const updateProduct = createAsyncThunk(
+  'product/updateProduct',
+  async ({ id, data }: { id: string; data: any }) => {
+    const response = await axiosClient.post(`/products/update-basic-info/${id}`, data);
+    return response.data;
+  }
+);
+
 const productSlice = createSlice({
   name: 'product',
   initialState,
@@ -203,6 +211,22 @@ const productSlice = createSlice({
       .addCase(getDetailProduct.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+      })
+      .addCase(updateProduct.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(updateProduct.fulfilled, (state, action) => {
+        state.loading = false;
+        state.success = true;
+        const index = state.products.findIndex(p => p._id === action.payload._id);
+        if (index !== -1) {
+          state.products[index] = action.payload;
+        }
+      })
+      .addCase(updateProduct.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || 'Failed to update product';
       });
   },
 });

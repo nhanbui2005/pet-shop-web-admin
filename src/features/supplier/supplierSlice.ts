@@ -43,11 +43,7 @@ export const createSupplier = createAsyncThunk(
 export const updateSupplier = createAsyncThunk(
   'supplier/update',
   async ({ id, data }: { id: string; data: FormData }) => {
-    const response = await axiosClient.put(`/supplier/update/${id}`, data, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    });
+    const response = await axiosClient.post(`/supplier/update?id=${id}`, data);
     return response.data;
   }
 );

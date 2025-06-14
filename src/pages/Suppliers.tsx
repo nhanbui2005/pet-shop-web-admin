@@ -27,7 +27,6 @@ import type { AppDispatch, RootState } from '../store';
 import { fetchSuppliers, createSupplier, updateSupplier, type Supplier, deleteSupplier } from '../features/supplier/supplierSlice';
 
 const { Title } = Typography;
-const { Option } = Select;
 
 const Suppliers: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
@@ -38,7 +37,6 @@ const Suppliers: React.FC = () => {
   const [searchText, setSearchText] = useState('');
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-console.log('sssssssss', suppliers);
 
   useEffect(() => {
     dispatch(fetchSuppliers());
@@ -50,11 +48,10 @@ console.log('sssssssss', suppliers);
   
       const formData = new FormData();
       
-      // Create data object with supplier information
+      // Create data object with supplier information matching SupplierDto
       const supplierData = {
-        name: values.name || '',
-        description: values.description || '',
-        parentId: values.parentId || undefined
+        name: values.name,
+        description: values.description
       };
       
       // Append data as JSON string
@@ -64,40 +61,34 @@ console.log('sssssssss', suppliers);
       if (imageFile instanceof File) {
         formData.append('image', imageFile);
       }
-      
-      for (let pair of formData.entries()) {
-        console.log(`${pair[0]}: ${pair[1]}`);
-      }
   
       if (editingSupplier) {
-        console.log('Updating supplier with ID:', editingSupplier._id);
         const result = await dispatch(updateSupplier({
           id: editingSupplier._id,
           data: formData,
         })).unwrap();
   
-        if (result.success) {
-          message.success('Cập nhật nhà cung cấp thành công');
-          dispatch(fetchSuppliers());
-        } else {
-          message.error(result.errors?.[0] || 'Có lỗi xảy ra khi cập nhật');
-        }
+        setIsModalVisible(false);
+        message.success('Cập nhật nhà cung cấp thành công');
+        form.resetFields();
+        setEditingSupplier(null);
+        setImageFile(null);
+        setPreviewImage(null);
+        dispatch(fetchSuppliers());
       } else {
-        console.log('Creating new supplier');
         const result = await dispatch(createSupplier(formData)).unwrap();
         if (result.success) {
+          setIsModalVisible(false);
           message.success('Thêm nhà cung cấp thành công');
+          form.resetFields();
+          setEditingSupplier(null);
+          setImageFile(null);
+          setPreviewImage(null);
           dispatch(fetchSuppliers());
         } else {
           message.error(result.errors?.[0] || 'Có lỗi xảy ra khi thêm mới');
         }
       }
-  
-      setIsModalVisible(false);
-      form.resetFields();
-      setEditingSupplier(null);
-      setImageFile(null);
-      setPreviewImage(null);
     } catch (error) {
       console.error('Lỗi khi xử lý form:', error);
       message.error('Có lỗi xảy ra, vui lòng kiểm tra lại thông tin');
