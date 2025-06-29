@@ -65,7 +65,7 @@ const VariantStockTable: React.FC<VariantStockTableProps> = ({ productId }) => {
         // Tính toán tồn kho hiện tại cho mỗi variant
         const variantsWithCurrentStock = data.map((v: any) => ({
           ...v,
-          currentStock: v.stockHistory[0]?.newStock ?? 0,
+          currentStock: v.variant.stock ?? 0,
         }));
         setVariants(variantsWithCurrentStock);
       })
