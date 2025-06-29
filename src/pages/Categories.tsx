@@ -1,105 +1,106 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
-  Table,
-  Card,
-  Button,
-  Space,
-  Input,
-  Modal,
-  Form,
-  Select,
-  Typography,
-  Divider,
-  Tag,
-  App,
-  Col,
-  Row,
-  Popconfirm,
-  message
+  Table, Card, Button, Space, Input, Modal, Form, Select,
+  Typography, Divider, Tag, App, Col, Row, Popconfirm
 } from 'antd';
 import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  SearchOutlined,
-  CaretRightOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, DownOutlined
 } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../store';
 import {
-  fetchCategories,
-  createCategory,
-  updateCategory,
-  deleteCategory,
-  type Category,
-  CategoryType
+  fetchCategories, createCategory, updateCategory, deleteCategory,
+  type Category, CategoryType
 } from '../features/category/categorySlice';
-import './Categories.css';
 
 const { Title } = Typography;
 const { Option } = Select;
 
+// --- HELPER FUNCTION: Recursively filter the category tree ---
+const filterTree = (tree: Category[], searchText: string): Category[] => {
+  if (!searchText) return tree;
+
+  return tree.reduce((acc, node) => {
+    const nodeNameMatches = node.name.toLowerCase().includes(searchText.toLowerCase());
+
+    if (node.children) {
+      const filteredChildren = filterTree(node.children, searchText);
+      if (nodeNameMatches || filteredChildren.length > 0) {
+        acc.push({ ...node, children: filteredChildren });
+      }
+    } else if (nodeNameMatches) {
+      acc.push(node);
+    }
+    
+    return acc;
+  }, [] as Category[]);
+};
+
 const Categories: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { categories = [], loading } = useSelector((state: RootState) => state.category);
+  const { message } = App.useApp(); // Use Ant Design's App context for messages
+  const [form] = Form.useForm();
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [form] = Form.useForm();
   const [searchText, setSearchText] = useState('');
-  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
 
   useEffect(() => {
     dispatch(fetchCategories());
   }, [dispatch]);
 
-  const buildCategoryTree = (flatList: Category[]): Category[] => {
-    const map: { [key: string]: Category & { children?: Category[] } } = {};
+  const categoryTree = useMemo(() => {
+    const buildTree = (list: Category[]): Category[] => {
+      const map: { [key: string]: Category & { children?: Category[] } } = {};
+      const roots: Category[] = [];
 
-    flatList.forEach(category => {
-      map[category._id] = { ...category };
-      map[category._id].children = [];
-    });
+      list.forEach(item => {
+        map[item._id] = { ...item, children: [] };
+      });
 
-    const rootNodes: Category[] = [];
+      list.forEach(item => {
+        if (item.parentId && map[item.parentId]) {
+          map[item.parentId].children?.push(map[item._id]);
+        } else {
+          roots.push(map[item._id]);
+        }
+      });
+      
+      // Remove empty children arrays
+      Object.values(map).forEach(node => {
+        if (node.children?.length === 0) delete node.children;
+      });
 
-    flatList.forEach(category => {
-      if (category.parentId && map[category.parentId]) {
-        map[category.parentId].children?.push(map[category._id]);
-      } else {
-        rootNodes.push(map[category._id]);
-      }
-    });
+      return roots.sort((a, b) => a.name.localeCompare(b.name));
+    };
 
-    Object.values(map).forEach(node => {
-      if (node.children && node.children.length === 0) {
-        delete node.children;
-      } else if (node.children) {
-        node.children.sort((a, b) => a.name.localeCompare(b.name));
-      }
-    });
-    return rootNodes.filter(node => !node.parentId).sort((a, b) => a.name.localeCompare(b.name));
+    return buildTree(categories);
+  }, [categories]);
+
+  const displayedCategories = useMemo(() => filterTree(categoryTree, searchText), [categoryTree, searchText]);
+
+  const handleShowModal = (category: Category | null) => {
+    setEditingCategory(category);
+    if (category) {
+      form.setFieldsValue({ name: category.name });
+    } else {
+      form.resetFields();
+    }
+    setIsModalVisible(true);
+  };
+  
+  const handleModalCancel = () => {
+    setIsModalVisible(false);
+    form.resetFields();
   };
 
   const handleModalOk = async () => {
     try {
       const values = await form.validateFields();
-
       if (editingCategory) {
-        const resultAction = await dispatch(updateCategory({
-          id: editingCategory._id,
-          name: values.name,
-        }));
-
-        if (updateCategory.fulfilled.match(resultAction)) {
-          setIsModalVisible(false);
-          message.success('Cập nhật danh mục thành công')
-          form.resetFields();
-          setEditingCategory(null);
-          dispatch(fetchCategories());
-        } else if (updateCategory.rejected.match(resultAction)) {
-          message.error(resultAction.error.message || 'Có lỗi xảy ra khi cập nhật.');
-        }
+        await dispatch(updateCategory({ id: editingCategory._id, name: values.name })).unwrap();
+        message.success('Cập nhật danh mục thành công');
       } else {
         const categoryData = {
           name: values.name,
@@ -107,304 +108,174 @@ const Categories: React.FC = () => {
           parentId: values.isRoot ? undefined : values.parentId,
           ...(values.isRoot && { categoryType: values.categoryType }),
         };
-
-        const resultAction = await dispatch(createCategory(categoryData));
-        if (createCategory.fulfilled.match(resultAction)) {
-          const result = resultAction.payload;
-          if (result.success) {
-            message.success('Thêm danh mục thành công');
-            dispatch(fetchCategories()); // Always reload categories after successful create
-            setIsModalVisible(false);
-            form.resetFields();
-            setEditingCategory(null);
-          } else {
-            message.error(result.errors?.[0] || 'Có lỗi xảy ra khi thêm danh mục.');
-          }
-        } else if (createCategory.rejected.match(resultAction)) {
-          message.error(resultAction.error.message || 'Có lỗi xảy ra khi thêm mới.');
-        }
+        await dispatch(createCategory(categoryData)).unwrap();
+        message.success('Thêm danh mục thành công');
       }
+      setIsModalVisible(false);
+      form.resetFields();
     } catch (error: any) {
-      if (error.errorFields) {
-        console.log('Validation failed:', error.errorFields);
-      } else {
-        console.log('mmmm', error);
-        
-        message.error(error.message || 'Có lỗi xảy ra.');
-      }
+      message.error(error.message || 'Thao tác thất bại.');
     }
   };
 
-  const handleEdit = (category: Category) => {
-    setEditingCategory(category);
-    form.setFieldsValue({
-      name: category.name,
-    });
-    setIsModalVisible(true);
-  };
-
-  const handleDelete = async (id: string) => {
+  const handleDeleteConfirm = async (id: string) => {
     try {
-      const resultAction = await dispatch(deleteCategory(id));
-      if (deleteCategory.fulfilled.match(resultAction)) {
-        message.success('Xóa danh mục thành công');
-        // Không cần re-fetch ở đây vì slice đã tự lọc bỏ.
-      } else if (deleteCategory.rejected.match(resultAction)) {
-        const errorPayload = resultAction.payload as string;
-        message.error(errorPayload || resultAction.error.message || 'Có lỗi xảy ra khi xóa danh mục');
-      }
+      await dispatch(deleteCategory(id)).unwrap();
+      message.success('Xóa danh mục thành công');
     } catch (error: any) {
-      message.error(error.message || 'Có lỗi xảy ra khi xóa danh mục');
+      message.error(error.message || 'Xóa danh mục thất bại');
     }
   };
-
-  const getCategoryTypeColor = (type: CategoryType) => {
-    switch (type) {
-      case CategoryType.DOG:
-        return 'blue';
-      case CategoryType.CAT:
-        return 'green';
-      case CategoryType.OTHER:
-        return 'orange';
-      default:
-        return 'default';
-    }
-  };
-
+  
   const columns = [
     {
       title: 'Tên danh mục',
       dataIndex: 'name',
       key: 'name',
-      sorter: (a: Category, b: Category) => a.name.localeCompare(b.name),
-      render: (text: string, record: Category) => (
-        <Space>
-          {record.parentId && <CaretRightOutlined style={{ marginRight: 4, color: '#1890ff' }} />}
-          {text}
-        </Space>
-      ),
     },
     {
       title: 'Loại',
       dataIndex: 'categoryType',
       key: 'categoryType',
-      render: (type: CategoryType) => type ? (
-        <Tag color={getCategoryTypeColor(type)}>
-          {type === CategoryType.DOG && 'Chó'}
-          {type === CategoryType.CAT && 'Mèo'}
-          {type === CategoryType.OTHER && 'Khác'}
-        </Tag>
-      ) : '-',
-      filters: Object.values(CategoryType).map(type => ({
-        text: type === CategoryType.DOG ? 'Chó' :
-              type === CategoryType.CAT ? 'Mèo' : 'Khác',
-        value: type
-      })),
-      onFilter: (value: any, record: Category) => record.categoryType === value,
+      render: (type: CategoryType) => {
+        if (!type) return '-';
+        const typeMap: Record<CategoryType, {color: string, text: string}> = {
+            [CategoryType.DOG]: { color: 'blue', text: 'Chó' },
+            [CategoryType.CAT]: { color: 'green', text: 'Mèo' },
+            [CategoryType.OTHER]: { color: 'orange', text: 'Khác' },
+        };
+        return <Tag color={typeMap[type].color}>{typeMap[type].text}</Tag>;
+      },
     },
     {
       title: 'Danh mục gốc',
       dataIndex: 'isRoot',
       key: 'isRoot',
-      render: (isRoot: boolean) => (
-        <Tag color={isRoot ? 'green' : 'blue'}>
-          {isRoot ? 'Có' : 'Không'}
-        </Tag>
-      ),
-      filters: [
-        { text: 'Có', value: true },
-        { text: 'Không', value: false },
-      ],
-      onFilter: (value: any, record: Category) => record.isRoot === value,
+      render: (isRoot: boolean) => <Tag color={isRoot ? 'success' : 'default'}>{isRoot ? 'Có' : 'Không'}</Tag>,
     },
     {
       title: 'Thao tác',
       key: 'action',
+      width: 200,
       render: (_: any, record: Category) => (
-        <Space size="middle">
-          <Button
-            type="primary"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
-          >
-            Sửa
-          </Button>
+        <Space>
+          <Button icon={<EditOutlined />} onClick={() => handleShowModal(record)}>Sửa</Button>
           <Popconfirm
-            title="Xóa danh mục"
-            description="Bạn có chắc chắn muốn xóa danh mục này? Thao tác này có thể ảnh hưởng đến các danh mục con và sản phẩm liên quan."
-            onConfirm={() => handleDelete(record._id)}
+            title="Xóa danh mục?"
+            description="Hành động này không thể hoàn tác. Bạn chắc chắn chứ?"
+            onConfirm={() => handleDeleteConfirm(record._id)}
             okText="Xóa"
             cancelText="Hủy"
           >
-            <Button danger icon={<DeleteOutlined />}>
-              Xóa
-            </Button>
+            <Button danger icon={<DeleteOutlined />}>Xóa</Button>
           </Popconfirm>
         </Space>
       ),
     },
   ];
 
-  const hierarchicalCategories = buildCategoryTree(categories);
-
-  const handleRowClick = (record: Category) => {
-    if (record.children && record.children.length > 0) {
-      const key = record._id;
-      const isExpanded = expandedKeys.includes(key);
-      if (isExpanded) {
-        setExpandedKeys(expandedKeys.filter(item => item !== key));
-      } else {
-        setExpandedKeys([...expandedKeys, key]);
-      }
-    }
-  };
-
-  const displayedCategories = hierarchicalCategories.filter(category =>
-    category.name.toLowerCase().includes(searchText.toLowerCase())
-  );
-
   return (
-    <div>
-      <Card className="p-6 rounded-lg shadow-md">
-        <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-          <Col>
-            <Title level={4} className="text-gray-800">Quản lý danh mục</Title>
-          </Col>
-          <Col>
-            <Space>
-              <Input
-                placeholder="Tìm kiếm danh mục"
-                prefix={<SearchOutlined className="text-gray-400" />}
-                onChange={(e) => setSearchText(e.target.value)}
-                style={{ width: 200 }}
-                className="rounded-md"
-              />
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  setEditingCategory(null);
-                  form.resetFields();
-                  setIsModalVisible(true);
-                }}
-                className="bg-blue-600 hover:bg-blue-700 focus:ring-blue-500 rounded-md shadow-sm"
-              >
-                Thêm danh mục
-              </Button>
-            </Space>
-          </Col>
-        </Row>
+    <Card>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+        <Col>
+          <Space>
+            <Input
+              placeholder="Tìm kiếm danh mục"
+              prefix={<SearchOutlined />}
+              onChange={(e) => setSearchText(e.target.value)}
+              style={{ width: 250 }}
+              allowClear
+            />
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => handleShowModal(null)}>
+              Thêm danh mục
+            </Button>
+          </Space>
+        </Col>
+      </Row>
 
-        <Table
-          columns={columns}
-          dataSource={displayedCategories}
-          rowKey="_id"
-          loading={loading}
-          bordered
-          style={{ backgroundColor: '#fff' }}
-          className="custom-table"
-          expandable={{
-            expandedRowKeys: expandedKeys,
-            onExpandedRowsChange: (keys) => setExpandedKeys(keys as string[]),
-          }}
-          onRow={(record) => ({
-            onClick: () => {
-              handleRowClick(record);
+      <Table
+        columns={columns}
+        dataSource={displayedCategories}
+        rowKey="_id"
+        loading={loading}
+        pagination={false}
+        expandable={{
+            expandIcon: ({ expanded, onExpand, record }) =>
+            record.children && record.children.length > 0 ? (
+                <DownOutlined
+                    onClick={e => onExpand(record, e)}
+                    style={{
+                        transition: 'transform 0.2s',
+                        transform: `rotate(${expanded ? 0 : -90}deg)`,
+                    }}
+                />
+            ) : null,
+        }}
+        components={{
+            header: {
+              cell: (props: any) => <th {...props} style={{ background: '#f0f5ff', color: '#333', fontWeight: 600 }} />,
             },
-          })}
-        />
-      </Card>
+        }}
+      />
 
       <Modal
         title={editingCategory ? 'Chỉnh sửa danh mục' : 'Thêm danh mục mới'}
         open={isModalVisible}
         onOk={handleModalOk}
-        onCancel={() => {
-          setIsModalVisible(false);
-          form.resetFields();
-          setEditingCategory(null);
-        }}
-        width={600}
-        maskClosable={false}
+        onCancel={handleModalCancel}
+        confirmLoading={loading}
         destroyOnClose={true}
-        className="rounded-lg shadow-xl"
+        maskClosable={false}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ isRoot: true }}
-        >
-          <Form.Item
-            name="name"
-            label="Tên danh mục"
-            rules={[{ required: true, message: 'Vui lòng nhập tên danh mục' }]}
-            className="mb-4"
-          >
-            <Input placeholder="Nhập tên danh mục" className="rounded-md" />
+        <Form form={form} layout="vertical" name="category_form" initialValues={{ isRoot: true }}>
+          <Form.Item name="name" label="Tên danh mục" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}>
+            <Input placeholder="Ví dụ: Thức ăn cho chó, Vòng cổ..." />
           </Form.Item>
 
           {!editingCategory && (
             <>
-              <Divider orientation="left" className="my-6 text-gray-600">Cấu hình danh mục</Divider>
-
-              <Form.Item
-                name="isRoot"
-                label="Loại danh mục"
-                rules={[{ required: true, message: 'Vui lòng chọn loại danh mục' }]}
-                className="mb-4"
-              >
-                <Select placeholder="Chọn loại danh mục" className="rounded-md">
-                  <Option value={true}>Danh mục gốc</Option>
-                  <Option value={false}>Danh mục con</Option>
+              <Divider />
+              <Form.Item name="isRoot" label="Loại danh mục" rules={[{ required: true }]}>
+                <Select>
+                  <Option value={true}>Danh mục gốc (Cấp 1)</Option>
+                  <Option value={false}>Danh mục con (Cấp 2)</Option>
                 </Select>
               </Form.Item>
 
-              <Form.Item
-                noStyle
-                shouldUpdate={(prevValues, currentValues) => prevValues.isRoot !== currentValues.isRoot}
-              >
-                {({ getFieldValue }) => {
-                  const isRoot = getFieldValue('isRoot');
-                  return isRoot ? (
-                    <Form.Item
-                      name="categoryType"
-                      label="Loại thú cưng"
-                      rules={[{ required: true, message: 'Vui lòng chọn loại thú cưng' }]}
-                      className="mb-4"
-                    >
-                      <Select placeholder="Chọn loại thú cưng" className="rounded-md">
+              <Form.Item noStyle shouldUpdate={(prev, current) => prev.isRoot !== current.isRoot}>
+                {({ getFieldValue }) =>
+                  getFieldValue('isRoot') === true ? (
+                    <Form.Item name="categoryType" label="Loại thú cưng" rules={[{ required: true }]}>
+                      <Select placeholder="Chọn loại thú cưng cho danh mục gốc">
                         <Option value={CategoryType.DOG}>Chó</Option>
                         <Option value={CategoryType.CAT}>Mèo</Option>
                         <Option value={CategoryType.OTHER}>Khác</Option>
                       </Select>
                     </Form.Item>
                   ) : (
-                    <Form.Item
-                      name="parentId"
-                      label="Danh mục cha"
-                      rules={[{ required: true, message: 'Vui lòng chọn danh mục cha' }]}
-                      className="mb-4"
-                    >
-                      <Select placeholder="Chọn danh mục cha" className="rounded-md">
-                        {categories
-                          .filter(cat => cat.isRoot)
-                          .map(category => (
-                            <Option key={category._id} value={category._id}>
-                              {category.name} ({category.categoryType === CategoryType.DOG ? 'Chó' :
-                                             category.categoryType === CategoryType.CAT ? 'Mèo' : 'Khác'})
-                            </Option>
-                          ))}
+                    <Form.Item name="parentId" label="Danh mục cha" rules={[{ required: true }]}>
+                      <Select placeholder="Chọn danh mục cha">
+                        {categories.filter(cat => cat.isRoot).map(cat => (
+                          <Option key={cat._id} value={cat._id}>{cat.name}</Option>
+                        ))}
                       </Select>
                     </Form.Item>
-                  );
-                }}
+                  )
+                }
               </Form.Item>
             </>
           )}
         </Form>
       </Modal>
-    </div>
+    </Card>
   );
 };
 
-export default Categories;
+// Wrap with <App> for message context
+const CategoriesPage = () => (
+    <App>
+        <Categories />
+    </App>
+);
+
+export default CategoriesPage;

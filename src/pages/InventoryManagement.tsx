@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Table,
   Card,
@@ -8,305 +8,272 @@ import {
   Modal,
   Form,
   InputNumber,
-  Select,
   Tag,
   message,
-  Popconfirm,
   Row,
   Col,
+  Typography,
 } from 'antd';
-import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  SearchOutlined,
-  FilterOutlined,
-} from '@ant-design/icons';
-import type { TableProps } from 'antd';
+import { getVariantsWithStockHistory, increaseStock, decreaseStock } from '../api/product.api';
+import { useSelector, useDispatch } from 'react-redux';
+import type { RootState, AppDispatch } from '../store';
+import { fetchProducts } from '../features/product/productSlice';
+import { SearchOutlined, PlusOutlined, MinusOutlined } from '@ant-design/icons';
 
-const { Option } = Select;
+const { Title } = Typography;
 
-interface InventoryItem {
+// --- TYPES (Không đổi) ---
+interface Variant {
+  _id: string;
+  name: string;
+}
+interface StockHistoryResDto {
   id: string;
-  productName: string;
-  category: string;
-  quantity: number;
-  minQuantity: number;
-  maxQuantity: number;
-  lastUpdated: string;
-  status: 'in_stock' | 'low_stock' | 'out_of_stock';
+  productId: string;
+  variantId: string;
+  oldStock: number;
+  newStock: number;
+  action: string;
+  note?: string;
+  createdAt: string;
+}
+interface VariantWithStockHistory {
+  variant: Variant;
+  stockHistory: StockHistoryResDto[];
+  currentStock: number; // Thêm trường tồn kho hiện tại
 }
 
-const InventoryManagement: React.FC = () => {
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
-  const [form] = Form.useForm();
-  const [showFilters, setShowFilters] = useState(false);
+// =================================================================
+// == COMPONENT CON: Bảng quản lý kho cho từng Variant (MỚI)      ==
+// =================================================================
+interface VariantStockTableProps {
+  productId: string;
+}
 
-  const columns: TableProps<InventoryItem>['columns'] = [
+const VariantStockTable: React.FC<VariantStockTableProps> = ({ productId }) => {
+  const [variants, setVariants] = useState<VariantWithStockHistory[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [stockModal, setStockModal] = useState<{ open: boolean; variantId?: string; variantName?: string; type?: 'increase' | 'decrease' }>({ open: false });
+  const [historyModal, setHistoryModal] = useState<{ open: boolean; history: StockHistoryResDto[]; variantName?: string }>({ open: false, history: [] });
+  const [form] = Form.useForm();
+
+  const fetchData = () => {
+    setLoading(true);
+    getVariantsWithStockHistory(productId)
+      .then(res => {
+        const data = res.data || [];
+        // Tính toán tồn kho hiện tại cho mỗi variant
+        const variantsWithCurrentStock = data.map((v: any) => ({
+          ...v,
+          currentStock: v.stockHistory[0]?.newStock ?? 0,
+        }));
+        setVariants(variantsWithCurrentStock);
+      })
+      .catch(() => message.error('Không thể tải chi tiết tồn kho'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [productId]);
+
+  const handleStockAction = async () => {
+    try {
+      const values = await form.validateFields();
+      if (!stockModal.variantId || !stockModal.type) return;
+      
+      setLoading(true);
+      if (stockModal.type === 'increase') {
+        await increaseStock(stockModal.variantId, values);
+        message.success('Nhập kho thành công');
+      } else {
+        await decreaseStock(stockModal.variantId, values);
+        message.success('Xuất kho thành công');
+      }
+      setStockModal({ open: false });
+      form.resetFields();
+      fetchData(); // Tải lại dữ liệu
+    } catch (e: any) {
+      message.error(e?.response?.data?.message || 'Có lỗi xảy ra');
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const columns = [
     {
-      title: 'ID',
-      dataIndex: 'id',
-      key: 'id',
+      title: 'Tên phiên bản (Variant)',
+      dataIndex: ['variant', 'name'],
+      key: 'name',
     },
     {
-      title: 'Tên sản phẩm',
-      dataIndex: 'productName',
-      key: 'productName',
+        title: 'Tồn kho hiện tại',
+        dataIndex: 'currentStock',
+        key: 'currentStock',
+        render: (stock: number) => <Tag color={stock > 0 ? 'blue' : 'orange'}>{stock}</Tag>,
+        sorter: (a: VariantWithStockHistory, b: VariantWithStockHistory) => a.currentStock - b.currentStock,
     },
     {
-      title: 'Danh mục',
-      dataIndex: 'category',
-      key: 'category',
-    },
-    {
-      title: 'Số lượng',
-      dataIndex: 'quantity',
-      key: 'quantity',
-    },
-    {
-      title: 'Số lượng tối thiểu',
-      dataIndex: 'minQuantity',
-      key: 'minQuantity',
-    },
-    {
-      title: 'Số lượng tối đa',
-      dataIndex: 'maxQuantity',
-      key: 'maxQuantity',
-    },
-    {
-      title: 'Cập nhật lần cuối',
-      dataIndex: 'lastUpdated',
-      key: 'lastUpdated',
-    },
-    {
-      title: 'Trạng thái',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => {
-        const statusMap = {
-          in_stock: { color: 'green', text: 'Còn hàng' },
-          low_stock: { color: 'orange', text: 'Sắp hết' },
-          out_of_stock: { color: 'red', text: 'Hết hàng' },
-        };
-        const { color, text } = statusMap[status as keyof typeof statusMap];
-        return <Tag color={color}>{text}</Tag>;
-      },
+      title: 'Lịch sử kho',
+      key: 'stockHistory',
+      render: (_: any, record: VariantWithStockHistory) => (
+        <Button onClick={() => setHistoryModal({ open: true, history: record.stockHistory, variantName: record.variant.name })}>
+          Xem ({record.stockHistory?.length || 0})
+        </Button>
+      ),
     },
     {
       title: 'Thao tác',
       key: 'action',
-      render: (_, record) => (
-        <Space size="middle">
+      render: (_: any, record: VariantWithStockHistory) => (
+        <Space>
           <Button
             type="primary"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
+            icon={<PlusOutlined />}
+            onClick={() => setStockModal({ open: true, variantId: record.variant._id, variantName: record.variant.name, type: 'increase' })}
           >
-            Sửa
+            Nhập kho
           </Button>
-          <Popconfirm
-            title="Xóa sản phẩm"
-            description="Bạn có chắc chắn muốn xóa sản phẩm này?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Xóa"
-            cancelText="Hủy"
+          <Button
+            danger
+            icon={<MinusOutlined />}
+            onClick={() => setStockModal({ open: true, variantId: record.variant._id, variantName: record.variant.name, type: 'decrease' })}
           >
-            <Button danger icon={<DeleteOutlined />}>
-              Xóa
-            </Button>
-          </Popconfirm>
+            Xuất kho
+          </Button>
         </Space>
       ),
     },
   ];
 
-  const handleEdit = (item: InventoryItem) => {
-    setEditingItem(item);
-    form.setFieldsValue(item);
-    setIsModalVisible(true);
-  };
-
-  const handleDelete = (id: string) => {
-    // Implement delete logic
-    message.success('Xóa sản phẩm thành công');
-  };
-
-  const handleModalOk = () => {
-    form.validateFields().then((values) => {
-      // Implement save logic
-      message.success(editingItem ? 'Cập nhật sản phẩm thành công' : 'Thêm sản phẩm thành công');
-      setIsModalVisible(false);
-      form.resetFields();
-      setEditingItem(null);
-    });
-  };
-
   return (
-    <div>
-      <Card>
-        <Space style={{ marginBottom: 16 }}>
-          <Input
-            placeholder="Tìm kiếm sản phẩm"
-            prefix={<SearchOutlined />}
-            style={{ width: 300 }}
-          />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setEditingItem(null);
-              form.resetFields();
-              setIsModalVisible(true);
-            }}
-          >
-            Thêm sản phẩm
-          </Button>
-          <Button
-            icon={<FilterOutlined />}
-            onClick={() => setShowFilters(!showFilters)}
-          >
-            {showFilters ? 'Ẩn bộ lọc' : 'Hiện bộ lọc'}
-          </Button>
-        </Space>
-
-        {showFilters && (
-          <Card style={{ marginBottom: 16 }}>
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item label="Danh mục">
-                  <Select placeholder="Chọn danh mục" style={{ width: '100%' }}>
-                    <Option value="Food">Thức ăn</Option>
-                    <Option value="Grooming">Chăm sóc</Option>
-                    <Option value="Toys">Đồ chơi</Option>
-                    <Option value="Accessories">Phụ kiện</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item label="Trạng thái">
-                  <Select placeholder="Chọn trạng thái" style={{ width: '100%' }}>
-                    <Option value="in_stock">Còn hàng</Option>
-                    <Option value="low_stock">Sắp hết</Option>
-                    <Option value="out_of_stock">Hết hàng</Option>
-                  </Select>
-                </Form.Item>
-              </Col>
-            </Row>
-          </Card>
-        )}
-
-        <Table
-          columns={columns}
-          dataSource={inventory}
-          rowKey="id"
-          className="custom-table"
-          components={{
-            header: {
-              cell: (props: any) => (
-                <th
-                  {...props}
-                  style={{
-                    background: '#E0FFFF',
-                    color: '#555555',
-                    fontWeight: 600,
-                    padding: '16px',
-                  }}
-                />
-              ),
-            },
-          }}
-        />
-      </Card>
-
+    <div style={{ padding: '16px', backgroundColor: '#fafafa' }}>
+      <Table
+        columns={columns}
+        dataSource={variants}
+        rowKey={(record) => record.variant._id}
+        loading={loading}
+        pagination={false}
+        size="small"
+      />
+      {/* Stock Modal */}
       <Modal
-        title={editingItem ? 'Sửa sản phẩm' : 'Thêm sản phẩm mới'}
-        open={isModalVisible}
-        onOk={handleModalOk}
-        onCancel={() => {
-          setIsModalVisible(false);
-          form.resetFields();
-          setEditingItem(null);
-        }}
+        title={`${stockModal.type === 'increase' ? 'Nhập' : 'Xuất'} kho cho: ${stockModal.variantName}`}
+        open={stockModal.open}
+        onOk={handleStockAction}
+        onCancel={() => { setStockModal({ open: false }); form.resetFields(); }}
+        okText={stockModal.type === 'increase' ? 'Nhập kho' : 'Xuất kho'}
+        cancelText="Hủy"
+        confirmLoading={loading}
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item name="quantity" label="Số lượng" rules={[{ required: true, message: 'Vui lòng nhập số lượng!' }]}>
+            <InputNumber min={1} style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="note" label="Ghi chú">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          {/* Bạn có thể thêm người thực hiện từ Redux state thay vì input */}
+        </Form>
+      </Modal>
+
+      {/* History Modal */}
+      <Modal
+        title={`Lịch sử tồn kho cho: ${historyModal.variantName}`}
+        open={historyModal.open}
+        onCancel={() => setHistoryModal({ open: false, history: [] })}
+        footer={null}
         width={800}
       >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ status: 'in_stock' }}
-        >
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                name="productName"
-                label="Tên sản phẩm"
-                rules={[{ required: true, message: 'Vui lòng nhập tên sản phẩm' }]}
-              >
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item
-                name="category"
-                label="Danh mục"
-                rules={[{ required: true, message: 'Vui lòng chọn danh mục' }]}
-              >
-                <Select>
-                  <Option value="Food">Thức ăn</Option>
-                  <Option value="Grooming">Chăm sóc</Option>
-                  <Option value="Toys">Đồ chơi</Option>
-                  <Option value="Accessories">Phụ kiện</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                name="quantity"
-                label="Số lượng"
-                rules={[{ required: true, message: 'Vui lòng nhập số lượng' }]}
-              >
-                <InputNumber min={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="minQuantity"
-                label="Số lượng tối thiểu"
-                rules={[{ required: true, message: 'Vui lòng nhập số lượng tối thiểu' }]}
-              >
-                <InputNumber min={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item
-                name="maxQuantity"
-                label="Số lượng tối đa"
-                rules={[{ required: true, message: 'Vui lòng nhập số lượng tối đa' }]}
-              >
-                <InputNumber min={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <Form.Item
-            name="status"
-            label="Trạng thái"
-            rules={[{ required: true, message: 'Vui lòng chọn trạng thái' }]}
-          >
-            <Select>
-              <Option value="in_stock">Còn hàng</Option>
-              <Option value="low_stock">Sắp hết</Option>
-              <Option value="out_of_stock">Hết hàng</Option>
-            </Select>
-          </Form.Item>
-        </Form>
+        <Table
+          dataSource={historyModal.history}
+          columns={[
+            { title: 'Thời gian', dataIndex: 'createdAt', render: (v: string) => new Date(v).toLocaleString('vi-VN') },
+            { title: 'Tồn kho cũ', dataIndex: 'oldStock' },
+            { title: 'Thay đổi', render: (_, record: StockHistoryResDto) => {
+                const change = record.newStock - record.oldStock;
+                const color = change > 0 ? 'green' : 'red';
+                const prefix = change > 0 ? '+' : '';
+                return <span style={{ color, fontWeight: 'bold' }}>{prefix}{change}</span>
+            }},
+            { title: 'Tồn kho mới', dataIndex: 'newStock' },
+            { title: 'Hành động', dataIndex: 'action', render: (action: string) => <Tag color={action.toUpperCase() === 'INCREASE' ? 'success' : 'error'}>{action.toUpperCase()}</Tag>},
+            { title: 'Ghi chú', dataIndex: 'note' }
+          ]}
+          rowKey="id"
+          pagination={{ pageSize: 5 }}
+          size="small"
+        />
       </Modal>
     </div>
   );
 };
 
-export default InventoryManagement; 
+
+// =================================================================
+// == COMPONENT CHÍNH: Quản lý tồn kho                             ==
+// =================================================================
+const InventoryManagement: React.FC = () => {
+  const dispatch = useDispatch<AppDispatch>();
+  const { products, loading: productsLoading } = useSelector((state: RootState) => state.product);
+  const [productFilter, setProductFilter] = useState('');
+
+  useEffect(() => {
+    dispatch(fetchProducts({ page: 1, limit: 100 }));
+  }, [dispatch]);
+
+  const filteredProducts = useMemo(() => {
+    if (!productFilter) return products;
+    return products.filter(p =>
+      p.name.toLowerCase().includes(productFilter.toLowerCase()) ||
+      p.supplier?.toLowerCase().includes(productFilter.toLowerCase())
+    );
+  }, [products, productFilter]);
+  
+  const productColumns = [
+    { title: 'Tên sản phẩm', dataIndex: 'name', key: 'name', render: (name: string) => <Typography.Text strong>{name}</Typography.Text> },
+    { title: 'Nhà cung cấp', dataIndex: 'supplier', key: 'supplier', render: (supplier: string) => supplier || 'N/A' },
+    {
+      title: 'Trạng thái',
+      dataIndex: 'isActivate',
+      key: 'isActivate',
+      render: (v: boolean) => v ? <Tag color="green">Đang bán</Tag> : <Tag color="red">Đã ẩn</Tag>,
+    },
+    // Các cột khác nếu cần
+  ];
+
+  return (
+    <Card>
+      <Row gutter={[16, 16]} justify="space-between" align="middle" style={{ marginBottom: 24 }}>
+          <Col xs={24} sm={12} md={10} lg={8}>
+              <Input
+                  placeholder="Tìm kiếm sản phẩm, nhà cung cấp..."
+                  prefix={<SearchOutlined />}
+                  onChange={(e) => setProductFilter(e.target.value)}
+                  allowClear
+              />
+          </Col>
+      </Row>
+
+      <Table
+        columns={productColumns}
+        dataSource={filteredProducts}
+        rowKey="_id"
+        loading={productsLoading}
+        pagination={{ pageSize: 10 }}
+        // Dùng expandable row để hiển thị chi tiết kho
+        expandable={{
+          expandedRowRender: (record) => <VariantStockTable productId={record._id} />,
+          rowExpandable: (record) => true, // Cho phép mọi hàng đều có thể mở rộng
+        }}
+        components={{
+            header: {
+              cell: (props: any) => <th {...props} style={{ background: '#f0f5ff', color: '#333', fontWeight: 600, padding: '16px' }} />,
+            },
+        }}
+      />
+    </Card>
+  );
+};
+
+export default InventoryManagement;

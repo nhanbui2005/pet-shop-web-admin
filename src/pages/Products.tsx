@@ -19,7 +19,7 @@ import {
   Slider,
   Tabs,
   Typography,
-  Switch,
+
 } from 'antd';
 import {
   PlusOutlined,
@@ -34,7 +34,8 @@ import { CheckOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../store';
-import { fetchProducts, setPagination, createProduct, getDetailProduct, type Attribute, type Product, type ProductVariant, type Category, updateProduct,  } from '../features/product/productSlice';
+import { fetchProducts, setPagination, createProduct, getDetailProduct, type Attribute, type Product, type ProductVariant, type Category,  } from '../features/product/productSlice';
+import CategorySelect from '../components/CategorySelect';
 import { fetchCategories as fetchAllCategoriesFromSlice, type Category as CategoryFromSlice } from '../features/category/categorySlice';
 import { fetchSuppliers } from '../features/supplier/supplierSlice';
 import TinyMCEEditor from '../components/TinyMCEEditor';
@@ -138,6 +139,11 @@ const Products: React.FC = () => {
 
     // Filter by supplier name
     if (isMatch && filters.supplier !== undefined) {
+      console.log('Filtering by supplier:', {
+        selectedSupplier: filters.supplier,
+        productSupplier: product.supplier,
+        isMatch: product.supplier === filters.supplier
+      });
       isMatch = product.supplier === filters.supplier;
     }
 
@@ -169,6 +175,10 @@ const Products: React.FC = () => {
   useEffect(() => {
     console.log('Filtered products:', filteredProducts);
   }, [filteredProducts]);
+
+  const handleCategoryChange = (value: string) => {
+    setSelectedCategory(value);
+  };
 
   const handleAddAttribute = () => {
     const newAttribute: Attribute = {
@@ -369,7 +379,7 @@ const Products: React.FC = () => {
             icon={<EyeOutlined />}
             onClick={() => handleViewDetails(record)}
           >
-            Xem chi tiết
+            Chi tiết
           </Button>
           <Button
             type="primary"
@@ -396,47 +406,89 @@ const Products: React.FC = () => {
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product);
-    form.setFieldsValue({
-      name: product.name,
-      isActivate: product.isActivate,
-      categories: product.categories.map(cat => cat._id),
-      suppliers_id: product.supplier,
-      images: product.images.map((img, index) => ({
-        uid: `-${index}`,
-        name: `image-${index}`,
-        status: 'done',
-        url: img
-      }))
-    });
+    form.setFieldsValue(product);
     setIsModalVisible(true);
   };
 
   const handleDelete = async (id: string) => {
-   
+    try {
+      // Implement delete logic here
+      message.success('Xóa sản phẩm thành công');
+    } catch (error) {
+      message.error('Có lỗi xảy ra khi xóa sản phẩm');
+    }
   };
 
   const onFinish = async (values: any) => {
     try {
-      const payload = {
-        name: values.name,
-        isActivate: values.isActivate,
-        categories: values.categories,
-        supplier: values.suppliers_id,
-        images: values.images?.map((file: any) => file.url || file.originFileObj)
-      };
-
-      if (editingProduct) {
-        await dispatch(updateProduct({ id: editingProduct._id, data: payload }));
-        message.success('Cập nhật sản phẩm thành công')
+      const formData = new FormData();
+  
+      const variantsArr = Array.isArray(values.variants)
+        ? values.variants
+        : Object.values(values.variants || {});
+  
+      let mappedVariants: any[] = [];
+      if (attributes.length === 0) {
+        if (variantsArr.length > 0) {
+          const v = variantsArr[0];
+          mappedVariants = [{
+            stock: v.stock || 0,
+            unitValues: [],
+            importPrice: v.importPrice || 0,
+            sellingPrice: v.sellingPrice || v.price || 0,
+            promotionalPrice: v.promotionalPrice || 0,
+          }];
+        } else {
+          mappedVariants = [];
+        }
       } else {
-        await dispatch(createProduct(payload));
-        message.success('Tạo sản phẩm mới thành công')
+        // Tạo tất cả các tổ hợp có thể có của các unit
+        const allUnitCombinations = cartesianProduct(
+          attributes.map(attr => attr.options)
+        );
 
+        // Map các tổ hợp unit với thông tin variant
+        mappedVariants = allUnitCombinations.map((unitValues, index) => {
+          const variant = variantsArr[index] || {};
+          return {
+            stock: variant.stock || 0,
+            unitValues: unitValues,
+            importPrice: variant.importPrice || 0,
+            sellingPrice: variant.sellingPrice || variant.price || 0,
+            promotionalPrice: variant.promotionalPrice || 0,
+          };
+        });
       }
+  
+      const payload = {
+        isActivate: values.status === 'active',
+        categories: [values.categoryId],
+        suppliers_id: values.supplier,
+        descriptions: values.descriptions,
+        name: values.name,
+        variantGroups: attributes.map(attr => ({
+          groupName: attr.name,
+          units: attr.options.map(opt => ({ unitName: opt }))
+        })),
+        variants: mappedVariants
+      };
+      console.log(JSON.stringify(payload));
+      
+      formData.append('data', JSON.stringify(payload));
+  
+      // Append images
+      if (values.images) {
+        values.images.forEach((file: any) => {
+          formData.append('images', file.originFileObj);
+        });
+      }
+  
+      await dispatch(createProduct(formData));
+      message.success('Thêm sản phẩm thành công!');
       setIsModalVisible(false);
       form.resetFields();
     } catch (error) {
-      message.error('Có lỗi xảy ra khi thao tác với sản phẩm!');
+      message.error('Có lỗi xảy ra khi thêm sản phẩm!');
     }
   };
   
@@ -680,12 +732,9 @@ const Products: React.FC = () => {
   return (
     <div>
       <Card>
-        <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-          <Col>
-            <Title level={4}>Quản lý sản phẩm</Title>
-          </Col>
-          <Col>
-            <Space>
+        <Row justify="space-between" align="middle" style={{ }}>
+  
+          <Space>
               <Input
                 placeholder="Tìm kiếm sản phẩm"
                 prefix={<SearchOutlined />}
@@ -696,7 +745,9 @@ const Products: React.FC = () => {
               <Button icon={<FilterOutlined />} onClick={() => setShowFilters(!showFilters)}>
                 Bộ lọc
               </Button>
-              <Button
+            </Space>
+
+            <Button
                 type="primary"
                 icon={<PlusOutlined />}
                 onClick={() => {
@@ -710,8 +761,6 @@ const Products: React.FC = () => {
               >
                 Thêm sản phẩm
               </Button>
-            </Space>
-          </Col>
         </Row>
 
         {showFilters && (
@@ -768,11 +817,12 @@ const Products: React.FC = () => {
                       max={10000000}
                       step={100000}
                       value={filters.priceRange}
-                      onChange={(value) => {
+                      onChange={(value: [number, number]) => {
+                         // Ensure value is a tuple [number, number]
                         if(Array.isArray(value) && value.length === 2) {
-                            setFilters(prev => ({ ...prev, priceRange: value as [number, number] }));
+                            setFilters(prev => ({ ...prev, priceRange: value }));
                         }
-                      }}
+                    }}
                       tipFormatter={(value) => `${value?.toLocaleString('vi-VN')} VNĐ`}
                     />
                   </Form.Item>
@@ -798,7 +848,7 @@ const Products: React.FC = () => {
         bordered
         onChange={handleTableChange}
         style={{ backgroundColor: '#f0f2f5' }}
-        className="custom-table"
+        className="custom-table product-table-header"
         pagination={pagination}
       />
 
@@ -824,13 +874,13 @@ const Products: React.FC = () => {
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ isActivate: true }}
+          initialValues={{ status: 'active' }}
           onFinish={onFinish}
         >
           <Tabs activeKey={activeTab} onChange={setActiveTab}>
             <Tabs.TabPane tab="Thông tin cơ bản" key="1">
               <Row gutter={16}>
-                <Col span={12}>
+                <Col span={5}>
                   <Form.Item
                     name="name"
                     label="Tên sản phẩm"
@@ -839,45 +889,38 @@ const Products: React.FC = () => {
                     <Input />
                   </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col span={5}>
                   <Form.Item
-                    name="categories"
+                    name="categoryId"
                     label="Danh mục"
                     rules={[{ required: true, message: 'Vui lòng chọn danh mục!' }]}
                   >
-                    <Select mode="multiple" placeholder="Chọn danh mục">
-                      {allCategories.map((category) => (
-                        <Option key={category._id} value={category._id}>
-                          {category.name}
-                        </Option>
-                      ))}
-                    </Select>
+                    <CategorySelect onChange={handleCategoryChange} value={selectedCategory} />
                   </Form.Item>
                 </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
+                <Col span={5}>
                   <Form.Item
-                    name="suppliers_id"
+                    name="supplier"
                     label="Nhà cung cấp"
                     rules={[{ required: true, message: 'Vui lòng chọn nhà cung cấp' }]}
                   >
                     <Select placeholder="Chọn nhà cung cấp">
                       {suppliers.map((supplier) => (
-                        <Option key={supplier._id} value={supplier._id}>
-                          {supplier.name}
-                        </Option>
+                        <Option key={supplier._id} value={supplier}>{supplier.name}</Option>
                       ))}
                     </Select>
                   </Form.Item>
                 </Col>
-                <Col span={12}>
+                <Col span={4}>
                   <Form.Item
-                    name="isActivate"
+                    name="status"
                     label="Trạng thái"
-                    valuePropName="checked"
+                    rules={[{ required: true, message: 'Vui lòng chọn trạng thái' }]}
                   >
-                    <Switch checkedChildren="Đang bán" unCheckedChildren="Ngừng bán" />
+                    <Select>
+                      <Option value="active">Đang bán</Option>
+                      <Option value="inactive">Ngừng bán</Option>
+                    </Select>
                   </Form.Item>
                 </Col>
               </Row>
@@ -940,8 +983,10 @@ const Products: React.FC = () => {
                 </Col>
               </Row>
               <div style={{ textAlign: 'right', marginTop: 24 }}>
-                <Button type="primary" htmlType="submit">
-                  {editingProduct ? 'Cập nhật' : 'Thêm mới'}
+                <Button type="primary" onClick={() => {
+                  form.validateFields(["name", "categoryId", "supplier", "status", "images", "descriptions"]).then(() => setActiveTab('2'));
+                }}>
+                  Tiếp tục
                 </Button>
               </div>
             </Tabs.TabPane>

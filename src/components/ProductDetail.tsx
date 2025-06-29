@@ -24,60 +24,38 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
   onClose,
   product,
 }) => {
-  // console.log('ProductDetail Component - Product:', product);
-  // console.log('ProductDetail Component - isVisible:', isVisible);
-
   if (!product) {
-    // console.log('No product data available');
     return null;
   }
 
-  // Helper function to find unit value by group name
   const getUnitValueForGroup = (variant: any, groupName: string) => {
-    // console.log(`[DBG getUnitValueForGroup] Called for group: ${groupName}`);
-    // console.log(`[DBG getUnitValueForGroup] Variant:`, variant);
-    // console.log(`[DBG getUnitValueForGroup] VariantGroups:`, product.variantGroups);
-
     if (!Array.isArray(product.variantGroups) || !Array.isArray(variant?.unitValues)) {
-      // console.log(`[DBG getUnitValueForGroup] Invalid input arrays for group: ${groupName}`);
       return '';
     }
 
     const targetGroup = product.variantGroups.find((group: any) => group.groupName === groupName);
-    // console.log(`[DBG getUnitValueForGroup] Target group found for ${groupName}:`, targetGroup);
-
     if (!targetGroup || !Array.isArray(targetGroup.units)) {
-      // console.log(`[DBG getUnitValueForGroup] Group not found or units not array for name: ${groupName}`);
-      return 'N/A'; // Return N/A if group or its units are missing
+      return 'N/A';
     }
 
-    // Find the unit object within the variant's unitValues whose _id exists in the target group's units
     const matchingUnit = variant.unitValues.find((variantUnit: any) => {
-      // console.log(`[DBG getUnitValueForGroup] Checking variantUnit:`, variantUnit, `against targetGroup ${groupName} units:`, targetGroup.units);
       return targetGroup.units.some((groupUnit: any) => {
-        // console.log(`[DBG getUnitValueForGroup] Comparing groupUnit _id: ${groupUnit._id} with variantUnit _id: ${variantUnit._id}`);
         return groupUnit._id === variantUnit._id;
       });
     });
 
-    // console.log(`[DBG getUnitValueForGroup] Matching unit found for ${groupName}:`, matchingUnit);
-
-    const result = matchingUnit?.unitName || 'N/A'; // Return unitName or N/A
-    // console.log(`[DBG getUnitValueForGroup] Returning value for ${groupName}:`, result);
+    const result = matchingUnit?.unitName || 'N/A';
     return result;
   };
 
-  // Dynamically generate columns for variant groups
   const variantGroupColumns = Array.isArray(product.variantGroups)
     ? product.variantGroups.map((group: any) => ({
         title: group.groupName || 'N/A',
-        dataIndex: 'unitValues', // Data is in unitValues array
-        key: group._id, // Use group ID as key
+        dataIndex: 'unitValues',
+        key: group._id,
         width: 120,
         render: (_: any, variant: any) => {
-          // console.log(`[DBG Render Column ${group.groupName}] Variant:`, variant);
           const value = getUnitValueForGroup(variant, group.groupName);
-          // console.log(`[DBG Render Column ${group.groupName}] Value:`, value);
           return value;
         },
       }))
@@ -91,7 +69,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
       width: 120,
       render: (sku: string) => sku || 'N/A',
     },
-    // Add dynamically generated variant group columns
     ...variantGroupColumns,
     {
       title: 'Giá nhập',
@@ -124,7 +101,6 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
     },
   ];
 
-  // Calculate total stock from variants
   const totalStock = Array.isArray(product.variants)
     ? product.variants.reduce((sum: number, variant: any) => sum + (variant.stock || 0), 0)
     : 0;
@@ -134,7 +110,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({
       title="Chi tiết sản phẩm"
       open={isVisible}
       onCancel={onClose}
-      width={1200}
+      width={900}
       footer={null}
     >
       <Descriptions bordered column={2}>

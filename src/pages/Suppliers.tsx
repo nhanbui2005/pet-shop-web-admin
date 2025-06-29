@@ -179,9 +179,6 @@ const Suppliers: React.FC = () => {
       <Card>
         <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
           <Col>
-            <Title level={4}>Quản lý nhà cung cấp</Title>
-          </Col>
-          <Col>
             <Space>
               <Input
                 placeholder="Tìm kiếm nhà cung cấp"

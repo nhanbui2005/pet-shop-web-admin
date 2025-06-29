@@ -1,16 +1,28 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Products from './pages/Products';
 import Customers from './pages/Customers';
 import Discounts from './pages/Discounts';
-import OrderManagement from './pages/OrderManagement';
 import InventoryManagement from './pages/InventoryManagement';
 import Suppliers from './pages/Suppliers';
 import Categories from './pages/Categories';
+import OrderManagement from './pages/OrderManagement';
+import Login from './pages/Login';
+import Notifacation from './pages/Notifacation';
+import { useSelector } from 'react-redux';
+import type { RootState } from './store';
 
 const { defaultAlgorithm, darkAlgorithm } = theme;
+
+function PrivateRoute({ children }: { children: JSX.Element }) {
+  const token = useSelector((state: RootState) => state.auth.token);
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
 
 function App() {
   return (
@@ -44,18 +56,29 @@ function App() {
       }}
     >
       <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/products" element={<Products />} />
-            <Route path="/customers" element={<Customers />} />
-            <Route path="/discounts" element={<Discounts/>}/>
-            <Route path="/orders" element={<OrderManagement />} />
-            <Route path="/categories" element={<Categories />} />
-            <Route path="/suppliers" element={<Suppliers />} />
-            <Route path="/inventory" element={<InventoryManagement />} />
-          </Routes>
-        </Layout>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/*"
+            element={
+              <PrivateRoute>
+                <Layout>
+                  <Routes>
+                    <Route path="/" element={<Dashboard />} />
+                    <Route path="/products" element={<Products />} />
+                    <Route path="/customers" element={<Customers />} />
+                    <Route path="/discounts" element={<Discounts />} />
+                    <Route path="/orders" element={<OrderManagement />} />
+                    <Route path="/categories" element={<Categories />} />
+                    <Route path="/suppliers" element={<Suppliers />} />
+                    <Route path="/inventory" element={<InventoryManagement />} />
+                    <Route path="/notifications" element={<Notifacation />} />
+                  </Routes>
+                </Layout>
+              </PrivateRoute>
+            }
+          />
+        </Routes>
       </Router>
     </ConfigProvider>
   );

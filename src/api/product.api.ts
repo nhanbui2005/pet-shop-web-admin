@@ -5,4 +5,16 @@ export const createProduct = (data: any) => {
   console.log('vvv', result);
   
   return result
+};
+
+export const getVariantsWithStockHistory = (productId: string) => {
+  return axiosClient.get(`/product-variant/by-product/${productId}/with-stock-history`);
+};
+
+export const increaseStock = (variantId: string, data: { quantity: number; note?: string; actionBy?: string }) => {
+  return axiosClient.post(`/product-variant/increase-stock/${variantId}`, data);
+};
+
+export const decreaseStock = (variantId: string, data: { quantity: number; note?: string; actionBy?: string }) => {
+  return axiosClient.post(`/product-variant/decrease-stock/${variantId}`, data);
 }; 
