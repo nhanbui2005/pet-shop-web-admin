@@ -25,6 +25,7 @@ import {
 import type { TableProps } from 'antd';
 import axiosClient from '../api/axiosClient';
 import { useNavigate } from 'react-router-dom';
+import { East } from '@mui/icons-material';
 
 const { Option } = Select;
 
@@ -41,7 +42,7 @@ interface Customer {
 
 const Customers: React.FC = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [viewingCustomer, setViewingCustomer] = useState<Customer | null>(null);
   const [form] = Form.useForm();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [filteredCustomers, setFilteredCustomers] = useState<Customer[]>([]);
@@ -88,18 +89,9 @@ const Customers: React.FC = () => {
     setFilteredCustomers(filteredData);
   };
 
-  const handleAddNew = () => {
-    setEditingCustomer(null);
-    form.resetFields();
-    setIsModalVisible(true);
-  };
-  
-  const handleEdit = (customer: Customer) => {
-    setEditingCustomer(customer);
-    form.setFieldsValue({
-        ...customer,
-        // Cần đảm bảo Form có các trường tương ứng, ví dụ `address`, `status`
-    });
+  const handleView = (customer: Customer) => {
+    setViewingCustomer(customer);
+    form.setFieldsValue({ ...customer });
     setIsModalVisible(true);
   };
 
@@ -114,34 +106,9 @@ const Customers: React.FC = () => {
     }
   };
 
-  const handleModalOk = () => {
-    form.validateFields().then(async (values) => {
-        setLoading(true);
-        try {
-            if (editingCustomer) {
-                // Logic cập nhật
-                // Giả sử API endpoint là /users/:id
-                await axiosClient.put(`/users/${editingCustomer.id}`, values);
-                message.success('Cập nhật khách hàng thành công');
-            } else {
-                // Logic thêm mới
-                // Giả sử API endpoint là /users
-                await axiosClient.post('/users', values);
-                message.success('Thêm khách hàng thành công');
-            }
-            setIsModalVisible(false);
-            fetchCustomers(); // Tải lại dữ liệu
-        } catch (error) {
-            message.error('Thao tác thất bại');
-        } finally {
-            setLoading(false);
-        }
-    });
-  };
-
   const handleModalCancel = () => {
     setIsModalVisible(false);
-    setEditingCustomer(null);
+    setViewingCustomer(null);
     form.resetFields();
   };
 
@@ -184,22 +151,11 @@ const Customers: React.FC = () => {
         <Space size="middle">
           <Button
             type="primary"
-            icon={<EditOutlined />}
-            onClick={() => handleEdit(record)}
+            icon={<East />}
+            onClick={() => handleView(record)}
           >
-            Sửa
+            Xem
           </Button>
-          <Popconfirm
-            title="Xóa khách hàng"
-            description="Bạn có chắc chắn muốn xóa khách hàng này?"
-            onConfirm={() => handleDelete(record.id)}
-            okText="Xóa"
-            cancelText="Hủy"
-          >
-            <Button danger icon={<DeleteOutlined />}>
-              Xóa
-            </Button>
-          </Popconfirm>
         </Space>
       ),
     },
@@ -222,7 +178,7 @@ const Customers: React.FC = () => {
                 <Button
                     type="primary"
                     icon={<PlusOutlined />}
-                    onClick={handleAddNew}
+                    onClick={() => setViewingCustomer(null)}
                 >
                     Thêm mới
                 </Button>
@@ -257,12 +213,15 @@ const Customers: React.FC = () => {
       </Card>
 
       <Modal
-        title={editingCustomer ? 'Sửa thông tin khách hàng' : 'Thêm khách hàng mới'}
+        title={viewingCustomer ? 'Thông tin khách hàng' : ''}
         open={isModalVisible}
-        onOk={handleModalOk}
         onCancel={handleModalCancel}
         width={600}
-        confirmLoading={loading}
+        footer={[
+          <Button key="close" onClick={handleModalCancel}>
+            Đóng
+          </Button>,
+        ]}
       >
         <Form
           form={form}
@@ -270,61 +229,44 @@ const Customers: React.FC = () => {
           initialValues={{ status: 'active' }}
         >
           <Row gutter={16}>
-             <Col span={12}>
-                <Form.Item
-                    name="surName"
-                    label="Họ và Tên đệm"
-                    rules={[{ required: true, message: 'Vui lòng nhập họ' }]}
-                >
-                    <Input />
-                </Form.Item>
-             </Col>
-             <Col span={12}>
-                <Form.Item
-                    name="name"
-                    label="Tên"
-                    rules={[{ required: true, message: 'Vui lòng nhập tên' }]}
-                >
-                    <Input />
-                </Form.Item>
-             </Col>
+            <Col span={12}>
+              <Form.Item
+                name="surName"
+                label="Họ và Tên đệm"
+              >
+                <Input readOnly disabled />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="name"
+                label="Tên"
+              >
+                <Input readOnly disabled />
+              </Form.Item>
+            </Col>
           </Row>
-
           <Form.Item
             name="email"
             label="Email"
-            rules={[
-              { required: true, message: 'Vui lòng nhập email' },
-              { type: 'email', message: 'Email không hợp lệ' },
-            ]}
           >
-            <Input />
+            <Input readOnly disabled />
           </Form.Item>
-
           <Form.Item
             name="phone"
             label="Số điện thoại"
-            rules={[
-              { required: true, message: 'Vui lòng nhập số điện thoại' },
-              // Sửa pattern để linh hoạt hơn với các đầu số Việt Nam
-              { pattern: /(84|0[3|5|7|8|9])+([0-9]{8})\b/, message: 'Số điện thoại không hợp lệ' },
-            ]}
           >
-            <Input />
+            <Input readOnly disabled />
           </Form.Item>
-
           <Form.Item name="address" label="Địa chỉ">
-            <Input.TextArea rows={3} />
+            <Input.TextArea rows={3} readOnly disabled />
           </Form.Item>
-
-          <Form.Item name="avatar" label="Ảnh đại diện" valuePropName="fileList">
-             {/* Logic upload cần được xử lý riêng, ở đây chỉ là giao diện */}
-            <Upload listType="picture-card" maxCount={1} beforeUpload={() => false}>
-              <div>
-                <PlusOutlined />
-                <div style={{ marginTop: 8 }}>Tải lên</div>
-              </div>
-            </Upload>
+          <Form.Item name="avatar" label="Ảnh đại diện">
+            {viewingCustomer?.avatar ? (
+              <Avatar src={viewingCustomer.avatar} size={64} />
+            ) : (
+              <Avatar icon={<UserOutlined />} size={64} />
+            )}
           </Form.Item>
         </Form>
       </Modal>
