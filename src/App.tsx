@@ -11,6 +11,7 @@ import Categories from './pages/Categories';
 import OrderManagement from './pages/OrderManagement';
 import Login from './pages/Login';
 import Notifacation from './pages/Notifacation';
+import Vouchers from './pages/Vouchers';
 import { useSelector } from 'react-redux';
 import type { RootState } from './store';
 
@@ -73,6 +74,7 @@ function App() {
                     <Route path="/suppliers" element={<Suppliers />} />
                     <Route path="/inventory" element={<InventoryManagement />} />
                     <Route path="/notifications" element={<Notifacation />} />
+                    <Route path="/vouchers" element={<Vouchers />} />
                   </Routes>
                 </Layout>
               </PrivateRoute>

@@ -3,6 +3,7 @@ import productReducer from '../features/product/productSlice';
 import supplierReducer from '../features/supplier/supplierSlice';
 import categoryReducer from '../features/category/categorySlice';
 import authReducer from '../features/auth/authSlice';
+import voucherReducer from '../features/voucher/voucherSlice';
 
 export const store = configureStore({
   reducer: {
@@ -10,6 +11,7 @@ export const store = configureStore({
     supplier: supplierReducer,
     category: categoryReducer,
     auth: authReducer,
+    voucher: voucherReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

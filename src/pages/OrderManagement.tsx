@@ -15,6 +15,7 @@ import {
   message,
   Typography,
   Divider,
+  Tabs,
 } from 'antd';
 import { SearchOutlined, EyeOutlined } from '@ant-design/icons';
 import type { TableProps } from 'antd';
@@ -57,9 +58,9 @@ const OrderStatusColors: Record<string, string> = {
 };
 
 const OrderStatusTransitionMap: Record<string, string[]> = {
-  NEWORDER: ['WAIT_FOR_PAYMENT', 'CONFIRMED', 'CANCELLED'],
+  NEWORDER: ['CONFIRMED', 'CANCELLED'],
   WAIT_FOR_PAYMENT: ['PAYMENT_SUCCESSFUL', 'CANCELLED'],
-  PAYMENT_SUCCESSFUL: ['CONFIRMED', 'CANCELLED', 'REFUNDED'],
+  PAYMENT_SUCCESSFUL: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['PROCESSING', 'CANCELLED'],
   PROCESSING: ['SHIPPED', 'CANCELLED'],
   SHIPPED: ['DELIVERED'],
@@ -124,13 +125,58 @@ const mapApiToOrder = (order: any): Order => ({
   })),
 });
 
+// Định nghĩa nhóm trạng thái cho từng tab
+const OrderTabs = [
+  {
+    key: 'pending',
+    label: 'Chờ xác nhận',
+    statuses: ['NEWORDER', 'PAYMENT_SUCCESSFUL'],
+    desc: 'Đơn mới tạo. Có thể đã thanh toán online nhưng vẫn chưa được admin xác nhận',
+  },
+  {
+    key: 'confirmed',
+    label: 'Đã xác nhận',
+    statuses: ['CONFIRMED'],
+    desc: 'Admin đã duyệt.',
+  },
+  {
+    key: 'processing',
+    label: 'Đang xử lý',
+    statuses: ['PROCESSING'],
+    desc: 'Đơn đang được chuẩn bị',
+  },
+  {
+    key: 'shipping',
+    label: 'Đang giao',
+    statuses: ['SHIPPED'],
+    desc: 'Đang trong quá trình vận chuyển',
+  },
+  {
+    key: 'done',
+    label: 'Hoàn tất',
+    statuses: ['DELIVERED', 'RECEIVED'],
+    desc: 'Đã giao xong và khách nhận hàng',
+  },
+  {
+    key: 'cancelled',
+    label: 'Đã hủy / Thất bại',
+    statuses: ['CANCELLED', 'FAILED'],
+    desc: 'Đơn bị huỷ hoặc giao hàng thất bại',
+  },
+  {
+    key: 'returned',
+    label: 'Trả hàng / Hoàn tiền',
+    statuses: ['RETURNED', 'REFUNDED'],
+    desc: 'Đơn đã bị trả hàng hoặc hoàn tiền',
+  },
+];
+
 const OrderManagement: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(false);
   
   // Filter states
   const [searchText, setSearchText] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedDateRange, setSelectedDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
 
   // Modal states
@@ -138,6 +184,10 @@ const OrderManagement: React.FC = () => {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [nextStatus, setNextStatus] = useState<string | undefined>(undefined);
+
+  const [activeTab, setActiveTab] = useState('pending');
+
+  const [pageSize, setPageSize] = useState(10);
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -159,23 +209,25 @@ const OrderManagement: React.FC = () => {
   }, [fetchOrders]);
   
   const filteredOrders = useMemo(() => {
+    const tab = OrderTabs.find(t => t.key === activeTab);
     return orders.filter((order) => {
       const orderDate = dayjs(order.createdAt);
+      const matchesTab = tab ? tab.statuses.includes(order.status) : true;
       const matchesSearch =
         order.sku.toLowerCase().includes(searchText.toLowerCase()) ||
         order.customerName.toLowerCase().includes(searchText.toLowerCase());
-      const matchesStatus = selectedStatus.length === 0 || selectedStatus.includes(order.status);
       const matchesDate = !selectedDateRange || (orderDate.isAfter(selectedDateRange[0]) && orderDate.isBefore(selectedDateRange[1]));
-      
-      return matchesSearch && matchesStatus && matchesDate;
+      return matchesTab && matchesSearch && matchesDate;
     });
-  }, [orders, searchText, selectedStatus, selectedDateRange]);
+  }, [orders, searchText, selectedDateRange, activeTab]);
 
   const handleUpdateStatus = async () => {
     if (!selectedOrder || !nextStatus) return;
     setUpdating(true);
     try {
-      const res = await axiosClient.put(`/order/${selectedOrder.id}/status`, { status: nextStatus });
+      const res = await axiosClient.post(`/order/${selectedOrder.id}/status`, { nextStatus: nextStatus });
+      console.log(res);
+      
       message.success('Cập nhật trạng thái thành công!');
       
       // OPTIMISTIC UPDATE: Update local state instead of re-fetching
@@ -244,6 +296,15 @@ const OrderManagement: React.FC = () => {
 
   return (
     <Card>
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={OrderTabs.map(tab => ({
+          key: tab.key,
+          label: tab.label,
+        }))}
+        style={{ marginBottom: 16 }}
+      />
       <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col xs={24} sm={12} md={8}>
           <Input
@@ -253,23 +314,6 @@ const OrderManagement: React.FC = () => {
             onChange={(e) => setSearchText(e.target.value)}
             allowClear
           />
-        </Col>
-        <Col xs={24} sm={12} md={8}>
-          <Select
-            mode="multiple"
-            style={{ width: '100%' }}
-            value={selectedStatus}
-            onChange={setSelectedStatus}
-            placeholder="Lọc theo trạng thái"
-            allowClear
-            maxTagCount="responsive"
-          >
-            {Object.keys(OrderStatusText).map((status) => (
-              <Select.Option key={status} value={status}>
-                <StatusTag status={status} />
-              </Select.Option>
-            ))}
-          </Select>
         </Col>
         <Col xs={24} sm={24} md={8}>
           <RangePicker
@@ -284,7 +328,12 @@ const OrderManagement: React.FC = () => {
         dataSource={filteredOrders}
         rowKey="id"
         loading={loading}
-        pagination={{ pageSize: 10, showSizeChanger: true }}
+        pagination={{
+          pageSize,
+          showSizeChanger: true,
+          pageSizeOptions: ['5', '10', '20', '50'],
+          onShowSizeChange: (current, size) => setPageSize(size),
+        }}
         scroll={{ x: 'max-content' }}
         components={{
             header: {
