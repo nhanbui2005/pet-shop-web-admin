@@ -76,8 +76,8 @@ const Suppliers: React.FC = () => {
         setPreviewImage(null);
         dispatch(fetchSuppliers());
       } else {
-        const result = await dispatch(createSupplier(formData)).unwrap();
-        if (result.success) {
+        const action = await dispatch(createSupplier(formData))
+        if (createSupplier.fulfilled.match(action)) {
           setIsModalVisible(false);
           message.success('Thêm nhà cung cấp thành công');
           form.resetFields();
@@ -86,7 +86,7 @@ const Suppliers: React.FC = () => {
           setPreviewImage(null);
           dispatch(fetchSuppliers());
         } else {
-          message.error(result.errors?.[0] || 'Có lỗi xảy ra khi thêm mới');
+          message.error( 'Có lỗi xảy ra khi thêm mới');
         }
       }
     } catch (error) {
@@ -109,7 +109,7 @@ const Suppliers: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      const result = await dispatch(deleteSupplier(id)).unwrap();
+      const result = await dispatch(deleteSupplier(id)).unwrap()
       if (result.success) {
         message.success('Xóa nhà cung cấp thành công');
         dispatch(fetchSuppliers());
@@ -154,7 +154,7 @@ const Suppliers: React.FC = () => {
           >
             Sửa
           </Button>
-          <Popconfirm
+          {/* <Popconfirm
             title="Xóa nhà cung cấp"
             description="Bạn có chắc chắn muốn xóa nhà cung cấp này?"
             onConfirm={() => handleDelete(record._id)}
@@ -164,7 +164,7 @@ const Suppliers: React.FC = () => {
             <Button danger icon={<DeleteOutlined />}>
               Xóa
             </Button>
-          </Popconfirm>
+          </Popconfirm> */}
         </Space>
       ),
     },

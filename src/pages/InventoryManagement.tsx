@@ -75,6 +75,8 @@ const VariantStockTable: React.FC<VariantStockTableProps> = ({ productId }) => {
 
   useEffect(() => {
     fetchData();
+    console.log("variants",variants);
+    
   }, [productId]);
 
   const handleStockAction = async () => {
@@ -110,7 +112,14 @@ const VariantStockTable: React.FC<VariantStockTableProps> = ({ productId }) => {
         title: 'Tồn kho hiện tại',
         dataIndex: 'currentStock',
         key: 'currentStock',
-        render: (stock: number) => <Tag color={stock > 0 ? 'blue' : 'orange'}>{stock}</Tag>,
+        render: (stock: number) => (
+          <>
+            <Tag color={stock > 0 ? (stock < 5 ? 'red' : 'blue') : 'orange'}>{stock}</Tag>
+            {stock < 5 && (
+              <Tag color="red" style={{ marginLeft: 4 }}>Cảnh báo: Sắp hết hàng</Tag>
+            )}
+          </>
+        ),
         sorter: (a: VariantWithStockHistory, b: VariantWithStockHistory) => a.currentStock - b.currentStock,
     },
     {

@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ConfigProvider, theme } from 'antd';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
@@ -11,8 +11,20 @@ import Categories from './pages/Categories';
 import OrderManagement from './pages/OrderManagement';
 import Login from './pages/Login';
 import Notifacation from './pages/Notifacation';
-import { useSelector } from 'react-redux';
+import Vouchers from './pages/Vouchers';
+import Support from './pages/Support';
+import SupportDetail from './pages/SupportDetail';
+import Blogs from './pages/Blogs';
+import BlogCreate from './pages/BlogCreate';
+import BlogEdit from './pages/BlogEdit';
+import BlogDetail from './pages/BlogDetail';
+import { useSelector, useDispatch } from 'react-redux';
 import type { RootState } from './store';
+import React from 'react';
+import useSocket from './hooks/useSocket';
+import ChatWidget from './components/ChatWidget';
+import { getCurrentUser } from './api/axiosClient';
+import { setUser } from './features/auth/authSlice';
 
 const { defaultAlgorithm, darkAlgorithm } = theme;
 
@@ -24,7 +36,20 @@ function PrivateRoute({ children }: { children: JSX.Element }) {
   return children;
 }
 
-function App() {
+function AppContent() {
+  const token = useSelector((state: RootState) => state.auth.token);
+  const dispatch = useDispatch();
+  const location = useLocation();
+  React.useEffect(() => {
+    if (token) {
+      getCurrentUser()
+        .then(res => {
+          if (res?.data) dispatch(setUser(res.data));
+        })
+        .catch(() => {});
+    }
+  }, [token, dispatch]);
+  useSocket(token);
   return (
     <ConfigProvider
       theme={{
@@ -55,7 +80,8 @@ function App() {
         },
       }}
     >
-      <Router>
+      {/* Ẩn ChatWidget khi ở trang /login */}
+      {location.pathname !== '/login' && <ChatWidget />}
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
@@ -73,14 +99,30 @@ function App() {
                     <Route path="/suppliers" element={<Suppliers />} />
                     <Route path="/inventory" element={<InventoryManagement />} />
                     <Route path="/notifications" element={<Notifacation />} />
+                    <Route path="/vouchers" element={<Vouchers />} />
+                    {/* Thêm route cho Hỗ trợ khách hàng */}
+                    <Route path="/support" element={<Support />} />
+                    <Route path="/support/:conversationId" element={<SupportDetail />} />
+                    {/* Thêm routes cho Blogs */}
+                    <Route path="/blogs" element={<Blogs />} />
+                    <Route path="/blogs/create" element={<BlogCreate />} />
+                    <Route path="/blogs/edit/:id" element={<BlogEdit />} />
+                    <Route path="/blogs/:id" element={<BlogDetail />} />
                   </Routes>
                 </Layout>
               </PrivateRoute>
             }
           />
         </Routes>
-      </Router>
     </ConfigProvider>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
   );
 }
 

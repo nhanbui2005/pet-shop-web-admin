@@ -34,7 +34,7 @@ import { CheckOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import type { TableProps } from 'antd';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../store';
-import { fetchProducts, setPagination, createProduct, getDetailProduct, type Attribute, type Product, type ProductVariant, type Category, } from '../features/product/productSlice';
+import { fetchProducts, setPagination, createProduct, getDetailProduct, updateProduct, type Attribute, type Product, type ProductVariant, type Category, } from '../features/product/productSlice';
 import CategorySelect from '../components/CategorySelect';
 import { fetchCategories as fetchAllCategoriesFromSlice, type Category as CategoryFromSlice } from '../features/category/categorySlice';
 import { fetchSuppliers } from '../features/supplier/supplierSlice';
@@ -42,6 +42,7 @@ import TinyMCEEditor from '../components/TinyMCEEditor';
 import ProductDetail from '../components/ProductDetail';
 import ProductFilterPanel from '../components/ProductFilterPanel';
 import ProductFormModal from '../components/ProductFormModal';
+import ProductEditModal from '../components/ProductEditModal';
 import ProductTable from '../components/ProductTable';
 
 const { Option } = Select;
@@ -51,10 +52,13 @@ const Products: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { products, loading, pagination, selectedProduct } = useSelector((state: RootState) => state.product);
   const { suppliers } = useSelector((state: RootState) => state.supplier);
+  // console.log('Suppliers trong Products:', suppliers);
   const { categories: allCategories } = useSelector((state: RootState) => state.category);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [form] = Form.useForm();
+  const [editForm] = Form.useForm();
 
   interface ProductFilters {
     status?: boolean | null;
@@ -142,11 +146,11 @@ const Products: React.FC = () => {
 
     // Filter by supplier name
     if (isMatch && filters.supplier !== undefined) {
-      console.log('Filtering by supplier:', {
-        selectedSupplier: filters.supplier,
-        productSupplier: product.supplier,
-        isMatch: product.supplier === filters.supplier
-      });
+      // console.log('Filtering by supplier:', {
+      //   selectedSupplier: filters.supplier,
+      //   productSupplier: product.supplier,
+      //   isMatch: product.supplier === filters.supplier
+      // });
       isMatch = product.supplier === filters.supplier;
     }
 
@@ -167,16 +171,16 @@ const Products: React.FC = () => {
 
   // Debug log for suppliers data
   useEffect(() => {
-    console.log('Suppliers data:', suppliers);
+    // console.log('Suppliers data:', suppliers);
   }, [suppliers]);
 
   // Debug log for filters
   useEffect(() => {
-    console.log('Current filters:', filters);
+    // console.log('Current filters:', filters);
   }, [filters]);
 
   useEffect(() => {
-    console.log('Filtered products:', filteredProducts);
+    // console.log('Filtered products:', filteredProducts);
   }, [filteredProducts]);
 
   const handleCategoryChange = (value: string) => {
@@ -311,7 +315,12 @@ const Products: React.FC = () => {
       title: 'Danh mục',
       dataIndex: 'categories',
       key: 'categories',
-      render: (categories: Category[]) => categories.map(cat => cat.name).join(', '),
+      render: (categories: Category[]) => {
+        if (categories && categories.length > 0) {
+          return categories[0].name;
+        }
+        return '-';
+      },
       filters: allCategories.map((cat: CategoryFromSlice) => ({
         text: cat.name,
         value: cat._id,
@@ -371,6 +380,25 @@ const Products: React.FC = () => {
       title: 'Nhà cung cấp',
       dataIndex: 'supplier',
       key: 'supplier',
+      render: (supplier: any) => {
+        // Hiển thị tên nhà cung cấp
+        // console.log('Supplier render data:', supplier);
+        // console.log('Supplier type:', typeof supplier);
+        // console.log('Supplier name:', supplier?.name);
+        // console.log('Supplier _id:', supplier?._id);
+        return supplier
+      },
+      filters: suppliers.map((supplier) => ({
+        text: supplier.name,
+        value: supplier._id,
+      })),
+      onFilter: (value, record) => {
+        // So sánh với ID của supplier
+        if (typeof record.supplier === 'object' && (record.supplier as any)._id) {
+          return (record.supplier as any)._id === value;
+        }
+        return record.supplier === value;
+      },
     },
     {
       title: 'Thao tác',
@@ -384,14 +412,14 @@ const Products: React.FC = () => {
           >
             Chi tiết
           </Button>
-          <Button
+          {/* <Button
             type="primary"
             icon={<EditOutlined />}
             onClick={() => handleEdit(record)}
           >
             Sửa
-          </Button>
-          <Popconfirm
+          </Button> */}
+          {/* <Popconfirm
             title="Xóa sản phẩm"
             description="Bạn có chắc chắn muốn xóa sản phẩm này?"
             onConfirm={() => handleDelete(record._id)}
@@ -401,16 +429,69 @@ const Products: React.FC = () => {
             <Button danger icon={<DeleteOutlined />}>
               Xóa
             </Button>
-          </Popconfirm>
+          </Popconfirm> */}
         </Space>
       ),
     },
   ];
 
-  const handleEdit = (product: Product) => {
+  const handleEdit = (product: any) => {
+    // console.log('handleEdit product:', product);
+    // console.log('Product supplier:', product.supplier);
+    // console.log('Product supplier type:', typeof product.supplier);
+    // console.log('Product supplier _id:', (product.supplier as any)?._id);
+    // console.log('Product supplier name:', (product.supplier as any)?.name);
+    
     setEditingProduct(product);
-    form.setFieldsValue(product);
-    setIsModalVisible(true);
+    setIsEditModalVisible(true);
+    editForm.resetFields();
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditModalVisible(false);
+    setEditingProduct(null);
+    editForm.resetFields();
+  };
+
+  const handleUpdateProduct = async (values: any) => {
+    try {
+      if (!editingProduct) return;
+      
+      // console.log('handleUpdateProduct received values:', values);
+      // console.log('Supplier value type:', typeof values.suppliers_id);
+      // console.log('Supplier value:', values.suppliers_id);
+      
+      // Đóng modal trước khi update để tránh lỗi DOM
+      setIsEditModalVisible(false);
+      setEditingProduct(null);
+      editForm.resetFields();
+      
+      // Đợi một chút để DOM được update hoàn toàn
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Sau đó mới update sản phẩm
+      const result = await dispatch(updateProduct({
+        id: editingProduct._id,
+        data: values
+      })).unwrap();
+      
+      // Đợi thêm một chút để đảm bảo update hoàn tất
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      message.success('Cập nhật sản phẩm thành công!');
+      
+      // Refresh danh sách sản phẩm sau khi update thành công
+      await dispatch(fetchProducts({
+        page: pagination.current,
+        limit: pagination.pageSize
+      }));
+    } catch (error) {
+      console.error('Update product error:', error);
+      message.error('Có lỗi xảy ra khi cập nhật sản phẩm!');
+      // Nếu có lỗi, mở lại modal để user có thể sửa
+      setIsEditModalVisible(true);
+      setEditingProduct(editingProduct);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -475,7 +556,7 @@ const Products: React.FC = () => {
         })),
         variants: mappedVariants
       };
-      console.log(JSON.stringify(payload));
+      // console.log(JSON.stringify(payload));
 
       formData.append('data', JSON.stringify(payload));
 
@@ -488,6 +569,10 @@ const Products: React.FC = () => {
 
       await dispatch(createProduct(formData));
       message.success('Thêm sản phẩm thành công!');
+      dispatch(fetchProducts({
+        page: pagination.current,
+        limit: pagination.pageSize
+      }));
       setIsModalVisible(false);
       form.resetFields();
     } catch (error) {
@@ -645,28 +730,28 @@ const Products: React.FC = () => {
           </Form.Item>
         ),
       },
-      {
-        title: 'Hình ảnh',
-        key: 'image',
-        width: 80,
-        render: (_: unknown, record: ProductVariant, index: number) => (
-          <Form.Item
-            name={['variants', index.toString(), 'image']}
-            valuePropName="fileList"
-            getValueFromEvent={e => Array.isArray(e) ? e : e && e.fileList}
-            style={{ marginBottom: 0 }}
-          >
-            <Upload
-              listType="picture"
-              maxCount={1}
-              beforeUpload={() => false}
-              style={{ width: '100%' }}
-            >
-              <Button icon={<UploadOutlined />} style={{ width: '100%' }} size="small">Ảnh</Button>
-            </Upload>
-          </Form.Item>
-        ),
-      },
+      // {
+      //   title: 'Hình ảnh',
+      //   key: 'image',
+      //   width: 80,
+      //   render: (_: unknown, record: ProductVariant, index: number) => (
+      //     <Form.Item
+      //       name={['variants', index.toString(), 'image']}
+      //       valuePropName="fileList"
+      //       getValueFromEvent={e => Array.isArray(e) ? e : e && e.fileList}
+      //       style={{ marginBottom: 0 }}
+      //     >
+      //       <Upload
+      //         listType="picture"
+      //         maxCount={1}
+      //         beforeUpload={() => false}
+      //         style={{ width: '100%' }}
+      //       >
+      //         <Button icon={<UploadOutlined />} style={{ width: '100%' }} size="small">Ảnh</Button>
+      //       </Upload>
+      //     </Form.Item>
+      //   ),
+      // },
       {
         title: 'Giá khuyến mãi',
         key: 'promotionalPrice',
@@ -705,14 +790,14 @@ const Products: React.FC = () => {
   const handleViewDetails = async (product: Product) => {
     try {
       const result = await dispatch(getDetailProduct(product._id)).unwrap();
-      console.log('Product Detail Response:', result);
+      // console.log('Product Detail Response:', result);
       if (result) {
         setIsDetailModalVisible(true);
       } else {
         message.error('Không thể lấy thông tin chi tiết sản phẩm');
       }
     } catch (error) {
-      console.error('Error fetching product details:', error);
+      // console.error('Error fetching product details:', error);
       message.error('Có lỗi xảy ra khi lấy thông tin chi tiết sản phẩm');
     }
   };
@@ -810,6 +895,16 @@ const Products: React.FC = () => {
         setActiveTab={setActiveTab}
         renderAttributeFields={renderAttributeFields}
         getVariantColumns={getVariantColumns}
+      />
+
+      <ProductEditModal
+        visible={isEditModalVisible}
+        onCancel={handleCancelEdit}
+        onFinish={handleUpdateProduct}
+        form={editForm}
+        editingProduct={editingProduct}
+        suppliers={suppliers}
+        allCategories={allCategories}
       />
 
       <ProductDetail

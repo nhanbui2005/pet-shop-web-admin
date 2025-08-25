@@ -146,6 +146,11 @@ export const createProduct = createAsyncThunk(
 export const updateProduct = createAsyncThunk(
   'product/updateProduct',
   async ({ id, data }: { id: string; data: any }) => {
+    // console.log('updateProduct API call - ID:', id);
+    // console.log('updateProduct API call - Data:', data);
+    // console.log('updateProduct API call - suppliers_id:', data.suppliers_id);
+    // console.log('updateProduct API call - suppliers_id type:', typeof data.suppliers_id);
+    
     const response = await axiosClient.post(`/products/update-basic-info/${id}`, data);
     return response.data;
   }

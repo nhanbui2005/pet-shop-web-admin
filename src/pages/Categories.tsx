@@ -1,16 +1,16 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   Table, Card, Button, Space, Input, Modal, Form, Select,
-  Typography, Divider, Tag, App, Col, Row, Popconfirm
+  Typography, Row, App, Col, Menu, Tabs
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, DownOutlined
+  PlusOutlined, EditOutlined, SearchOutlined, DownOutlined
 } from '@ant-design/icons';
 import { useDispatch, useSelector } from 'react-redux';
 import type { AppDispatch, RootState } from '../store';
 import {
   fetchCategories, createCategory, updateCategory, deleteCategory,
-  type Category, CategoryType
+  type Category
 } from '../features/category/categorySlice';
 
 const { Title } = Typography;
@@ -19,10 +19,8 @@ const { Option } = Select;
 // --- HELPER FUNCTION: Recursively filter the category tree ---
 const filterTree = (tree: Category[], searchText: string): Category[] => {
   if (!searchText) return tree;
-
   return tree.reduce((acc, node) => {
     const nodeNameMatches = node.name.toLowerCase().includes(searchText.toLowerCase());
-
     if (node.children) {
       const filteredChildren = filterTree(node.children, searchText);
       if (nodeNameMatches || filteredChildren.length > 0) {
@@ -31,7 +29,6 @@ const filterTree = (tree: Category[], searchText: string): Category[] => {
     } else if (nodeNameMatches) {
       acc.push(node);
     }
-    
     return acc;
   }, [] as Category[]);
 };
@@ -39,57 +36,51 @@ const filterTree = (tree: Category[], searchText: string): Category[] => {
 const Categories: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>();
   const { categories = [], loading } = useSelector((state: RootState) => state.category);
-  const { message } = App.useApp(); // Use Ant Design's App context for messages
-  const [form] = Form.useForm();
+  const { message } = App.useApp();
 
+  const [form] = Form.useForm();
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [searchText, setSearchText] = useState('');
+  const [activeRootId, setActiveRootId] = useState<string | null>(null);
+  const [isRootModalVisible, setIsRootModalVisible] = useState(false);
+  const [rootForm] = Form.useForm();
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean, x: number, y: number, parentId: string | null, level: 2 | 3 | null }>({ visible: false, x: 0, y: 0, parentId: null, level: null });
+  const [contextForm] = Form.useForm();
+  const [isContextModalVisible, setIsContextModalVisible] = useState(false);
 
   useEffect(() => {
     dispatch(fetchCategories());
   }, [dispatch]);
 
-  const categoryTree = useMemo(() => {
-    const buildTree = (list: Category[]): Category[] => {
-      const map: { [key: string]: Category & { children?: Category[] } } = {};
-      const roots: Category[] = [];
+  const rootCategories = useMemo(() => categories.filter(cat => !cat.parentId), [categories]);
 
-      list.forEach(item => {
-        map[item._id] = { ...item, children: [] };
-      });
+  useEffect(() => {
+    if (rootCategories.length > 0 && !activeRootId) {
+      setActiveRootId(rootCategories[0]._id);
+    }
+  }, [rootCategories, activeRootId]);
 
-      list.forEach(item => {
-        if (item.parentId && map[item.parentId]) {
-          map[item.parentId].children?.push(map[item._id]);
-        } else {
-          roots.push(map[item._id]);
-        }
-      });
-      
-      // Remove empty children arrays
-      Object.values(map).forEach(node => {
-        if (node.children?.length === 0) delete node.children;
-      });
+  const activeRoot = useMemo(
+    () => rootCategories.find(cat => cat._id === activeRootId),
+    [rootCategories, activeRootId]
+  );
 
-      return roots.sort((a, b) => a.name.localeCompare(b.name));
-    };
-
-    return buildTree(categories);
-  }, [categories]);
-
-  const displayedCategories = useMemo(() => filterTree(categoryTree, searchText), [categoryTree, searchText]);
+  const displayedCategories = useMemo(
+    () => (activeRoot?.children || []),
+    [activeRoot]
+  );
 
   const handleShowModal = (category: Category | null) => {
     setEditingCategory(category);
     if (category) {
-      form.setFieldsValue({ name: category.name });
+      form.setFieldsValue({ name: category.name, parentId: category.parentId || null });
     } else {
       form.resetFields();
     }
     setIsModalVisible(true);
   };
-  
+
   const handleModalCancel = () => {
     setIsModalVisible(false);
     form.resetFields();
@@ -101,15 +92,23 @@ const Categories: React.FC = () => {
       if (editingCategory) {
         await dispatch(updateCategory({ id: editingCategory._id, name: values.name })).unwrap();
         message.success('Cập nhật danh mục thành công');
+        await dispatch(fetchCategories()); // reload sau khi cập nhật
       } else {
-        const categoryData = {
-          name: values.name,
-          isRoot: values.isRoot,
-          parentId: values.isRoot ? undefined : values.parentId,
-          ...(values.isRoot && { categoryType: values.categoryType }),
-        };
+        let parentId: string | undefined;
+        if (values.parentIdLv2) {
+          parentId = values.parentIdLv2;
+        } else if (activeRootId) {
+          parentId = activeRootId;
+        }
+        const isRoot = parentId === undefined;
+        const categoryData = { name: values.name, isRoot: isRoot, parentId: parentId };
+        if (isRoot) {
+          message.success('Thêm danh mục gốc thành công');
+        } else {
+          message.success('Thêm danh mục con thành công');
+        }
         await dispatch(createCategory(categoryData)).unwrap();
-        message.success('Thêm danh mục thành công');
+        await dispatch(fetchCategories()); // reload sau khi thêm
       }
       setIsModalVisible(false);
       form.resetFields();
@@ -122,36 +121,25 @@ const Categories: React.FC = () => {
     try {
       await dispatch(deleteCategory(id)).unwrap();
       message.success('Xóa danh mục thành công');
+      await dispatch(fetchCategories()); // reload sau khi xóa
     } catch (error: any) {
       message.error(error.message || 'Xóa danh mục thất bại');
     }
   };
-  
+
   const columns = [
     {
       title: 'Tên danh mục',
       dataIndex: 'name',
       key: 'name',
-    },
-    {
-      title: 'Loại',
-      dataIndex: 'categoryType',
-      key: 'categoryType',
-      render: (type: CategoryType) => {
-        if (!type) return '-';
-        const typeMap: Record<CategoryType, {color: string, text: string}> = {
-            [CategoryType.DOG]: { color: 'blue', text: 'Chó' },
-            [CategoryType.CAT]: { color: 'green', text: 'Mèo' },
-            [CategoryType.OTHER]: { color: 'orange', text: 'Khác' },
-        };
-        return <Tag color={typeMap[type].color}>{typeMap[type].text}</Tag>;
-      },
-    },
-    {
-      title: 'Danh mục gốc',
-      dataIndex: 'isRoot',
-      key: 'isRoot',
-      render: (isRoot: boolean) => <Tag color={isRoot ? 'success' : 'default'}>{isRoot ? 'Có' : 'Không'}</Tag>,
+      render: (text: string, record: Category) => {
+        let isLevel2 = record.parentId === activeRootId;
+        return (
+          <span style={{ fontWeight: isLevel2 ? 600 : 400 }}>
+            {text}
+          </span>
+        );
+      }
     },
     {
       title: 'Thao tác',
@@ -160,31 +148,89 @@ const Categories: React.FC = () => {
       render: (_: any, record: Category) => (
         <Space>
           <Button icon={<EditOutlined />} onClick={() => handleShowModal(record)}>Sửa</Button>
-          <Popconfirm
-            title="Xóa danh mục?"
-            description="Hành động này không thể hoàn tác. Bạn chắc chắn chứ?"
-            onConfirm={() => handleDeleteConfirm(record._id)}
-            okText="Xóa"
-            cancelText="Hủy"
-          >
-            <Button danger icon={<DeleteOutlined />}>Xóa</Button>
-          </Popconfirm>
         </Space>
       ),
     },
   ];
 
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setContextMenu({ ...contextMenu, visible: false });
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [contextMenu]);
+
+  const handleHeaderContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, parentId: activeRootId, level: 2 });
+  };
+
+  const handleRowContextMenu = (record: Category) => (e: React.MouseEvent) => {
+    if (record.parentId === activeRootId) {
+      e.preventDefault();
+      if (record.children && record.children.length > 0) {
+        setContextMenu({ visible: true, x: e.clientX, y: e.clientY, parentId: record._id, level: 3 });
+      } else {
+        const categoryName = prompt('Nhập tên danh mục cấp 3:');
+        if (categoryName && categoryName.trim()) {
+          dispatch(createCategory({ name: categoryName.trim(), isRoot: false, parentId: record._id }))
+            .unwrap()
+            .then(async () => {
+              message.success('Tạo danh mục cấp 3 thành công');
+              await dispatch(fetchCategories()); // reload sau khi tạo
+            })
+            .catch((error: any) => {
+              message.error(error.message || 'Thao tác thất bại.');
+            });
+        }
+      }
+    }
+  };
+
+  const handleContextMenuClick = () => {
+    setIsContextModalVisible(true);
+    setContextMenu({ ...contextMenu, visible: false });
+  };
+
+  const handleContextCreate = async () => {
+    try {
+      const values = await contextForm.validateFields();
+      const categoryData: any = { name: values.name, isRoot: false };
+      if (contextMenu.parentId) {
+        categoryData.parentId = contextMenu.parentId;
+      }
+      await dispatch(createCategory(categoryData)).unwrap();
+      message.success('Tạo danh mục thành công');
+      await dispatch(fetchCategories()); // reload sau khi tạo từ context
+      setIsContextModalVisible(false);
+      contextForm.resetFields();
+    } catch (error: any) {
+      message.error(error.message || 'Thao tác thất bại.');
+    }
+  };
+
   return (
     <Card>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 8 }}>
+        <Col>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setIsRootModalVisible(true)}>
+            Thêm danh mục gốc
+          </Button>
+        </Col>
+      </Row>
+
+      <Tabs activeKey={activeRootId || ''} onChange={setActiveRootId} type="card"
+        items={rootCategories.map(root => ({ key: root._id, label: root.name }))}
+        style={{ marginBottom: 16 }}
+      />
+
       <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col>
           <Space>
-            <Input
-              placeholder="Tìm kiếm danh mục"
-              prefix={<SearchOutlined />}
+            <Input placeholder="Tìm kiếm danh mục" prefix={<SearchOutlined />}
               onChange={(e) => setSearchText(e.target.value)}
-              style={{ width: 250 }}
-              allowClear
+              style={{ width: 250 }} allowClear
             />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => handleShowModal(null)}>
               Thêm danh mục
@@ -193,33 +239,86 @@ const Categories: React.FC = () => {
         </Col>
       </Row>
 
-      <Table
-        columns={columns}
-        dataSource={displayedCategories}
-        rowKey="_id"
-        loading={loading}
-        pagination={false}
-        expandable={{
+      <div style={{ position: 'relative' }}>
+        <Table
+          columns={columns}
+          dataSource={displayedCategories}
+          rowKey="_id"
+          loading={loading}
+          pagination={false}
+          expandable={{
             expandIcon: ({ expanded, onExpand, record }) =>
-            record.children && record.children.length > 0 ? (
+              record.children && record.children.length > 0 ? (
                 <DownOutlined
-                    onClick={e => onExpand(record, e)}
-                    style={{
-                        transition: 'transform 0.2s',
-                        transform: `rotate(${expanded ? 0 : -90}deg)`,
-                    }}
+                  onClick={e => onExpand(record, e)}
+                  style={{
+                    transition: 'transform 0.2s',
+                    transform: `rotate(${expanded ? 0 : -90}deg)`
+                  }}
                 />
-            ) : null,
-        }}
-        components={{
+              ) : null,
+          }}
+          components={{
             header: {
-              cell: (props: any) => <th {...props} style={{ background: '#f0f5ff', color: '#333', fontWeight: 600 }} />,
+              cell: (props: any) => (
+                <th {...props}
+                  style={{ background: '#f0f5ff', color: '#333', fontWeight: 600 }}
+                  onContextMenu={handleHeaderContextMenu}
+                />
+              ),
             },
-        }}
-      />
+            body: {
+              row: (props: any) => {
+                const { record, ...restProps } = props;
+                return (
+                  <tr {...restProps} onContextMenu={handleRowContextMenu(record)} />
+                );
+              },
+            },
+          }}
+        />
 
-      <Modal
-        title={editingCategory ? 'Chỉnh sửa danh mục' : 'Thêm danh mục mới'}
+        {contextMenu.visible && (
+          <Menu
+            style={{ position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 10000 }}
+            onClick={handleContextMenuClick}
+            items={[{ key: 'create', label: contextMenu.level === 2 ? 'Tạo danh mục cấp 2' : 'Tạo danh mục cấp 3' }]}
+          />
+        )}
+      </div>
+
+      {/* Modal thêm danh mục gốc */}
+      <Modal title="Thêm danh mục gốc"
+        open={isRootModalVisible}
+        onOk={async () => {
+          try {
+            const values = await rootForm.validateFields();
+            await dispatch(createCategory({ name: values.name, isRoot: true, parentId: undefined })).unwrap();
+            message.success('Thêm danh mục gốc thành công');
+            await dispatch(fetchCategories()); // reload sau khi thêm root
+            setIsRootModalVisible(false);
+            rootForm.resetFields();
+          } catch (error: any) {
+            message.error(error.message || 'Thao tác thất bại.');
+          }
+        }}
+        onCancel={() => {
+          setIsRootModalVisible(false);
+          rootForm.resetFields();
+        }}
+        confirmLoading={loading}
+        destroyOnClose={true}
+        maskClosable={false}
+      >
+        <Form form={rootForm} layout="vertical" name="root_category_form">
+          <Form.Item name="name" label="Tên danh mục gốc" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}>
+            <Input placeholder="Ví dụ: Thức ăn cho chó, Vòng cổ..." />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Modal thêm/sửa danh mục con */}
+      <Modal title={editingCategory ? 'Chỉnh sửa danh mục' : 'Thêm danh mục'}
         open={isModalVisible}
         onOk={handleModalOk}
         onCancel={handleModalCancel}
@@ -227,55 +326,54 @@ const Categories: React.FC = () => {
         destroyOnClose={true}
         maskClosable={false}
       >
-        <Form form={form} layout="vertical" name="category_form" initialValues={{ isRoot: true }}>
+        <Form form={form} layout="vertical" name="category_form">
           <Form.Item name="name" label="Tên danh mục" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}>
             <Input placeholder="Ví dụ: Thức ăn cho chó, Vòng cổ..." />
           </Form.Item>
-
-          {!editingCategory && (
+          {!editingCategory && activeRoot && (
             <>
-              <Divider />
-              <Form.Item name="isRoot" label="Loại danh mục" rules={[{ required: true }]}>
-                <Select>
-                  <Option value={true}>Danh mục gốc (Cấp 1)</Option>
-                  <Option value={false}>Danh mục con (Cấp 2)</Option>
-                </Select>
+              <Form.Item label="Danh mục gốc">
+                <Input value={activeRoot.name} disabled />
               </Form.Item>
-
-              <Form.Item noStyle shouldUpdate={(prev, current) => prev.isRoot !== current.isRoot}>
-                {({ getFieldValue }) =>
-                  getFieldValue('isRoot') === true ? (
-                    <Form.Item name="categoryType" label="Loại thú cưng" rules={[{ required: true }]}>
-                      <Select placeholder="Chọn loại thú cưng cho danh mục gốc">
-                        <Option value={CategoryType.DOG}>Chó</Option>
-                        <Option value={CategoryType.CAT}>Mèo</Option>
-                        <Option value={CategoryType.OTHER}>Khác</Option>
-                      </Select>
-                    </Form.Item>
-                  ) : (
-                    <Form.Item name="parentId" label="Danh mục cha" rules={[{ required: true }]}>
-                      <Select placeholder="Chọn danh mục cha">
-                        {categories.filter(cat => cat.isRoot).map(cat => (
-                          <Option key={cat._id} value={cat._id}>{cat.name}</Option>
-                        ))}
-                      </Select>
-                    </Form.Item>
-                  )
-                }
-              </Form.Item>
+              {activeRoot.children && activeRoot.children.length > 0 && (
+                <Form.Item name="parentIdLv2" label="Chọn danh mục cấp 2 (nếu muốn tạo cấp 3)">
+                  <Select allowClear placeholder="Chọn danh mục cấp 2 (bỏ qua nếu muốn tạo cấp 2)">
+                    {activeRoot.children.map(child => (
+                      <Option key={child._id} value={child._id}>{child.name}</Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              )}
             </>
           )}
+        </Form>
+      </Modal>
+
+      {/* Modal tạo danh mục từ context menu */}
+      <Modal title={contextMenu.level === 2 ? 'Tạo danh mục cấp 2' : 'Tạo danh mục cấp 3'}
+        open={isContextModalVisible}
+        onOk={handleContextCreate}
+        onCancel={() => {
+          setIsContextModalVisible(false);
+          contextForm.resetFields();
+        }}
+        destroyOnClose
+        maskClosable={false}
+      >
+        <Form form={contextForm} layout="vertical">
+          <Form.Item name="name" label="Tên danh mục" rules={[{ required: true, message: 'Vui lòng nhập tên' }]}>
+            <Input placeholder="Nhập tên danh mục..." />
+          </Form.Item>
         </Form>
       </Modal>
     </Card>
   );
 };
 
-// Wrap with <App> for message context
 const CategoriesPage = () => (
-    <App>
-        <Categories />
-    </App>
+  <App>
+    <Categories />
+  </App>
 );
 
 export default CategoriesPage;
