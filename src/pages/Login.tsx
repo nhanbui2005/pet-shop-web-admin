@@ -130,10 +130,6 @@ const LoginPage: React.FC = () => {
                                     </Button>
                                 </Form.Item>
                                 
-                                <div style={{ textAlign: 'center' }}>
-                                    <Typography.Text type="secondary">Chưa có tài khoản?</Typography.Text>{' '}
-                                    <a href="/register">Đăng ký ngay</a>
-                                </div>
                             </Form>
                         </Card>
                     </Col>

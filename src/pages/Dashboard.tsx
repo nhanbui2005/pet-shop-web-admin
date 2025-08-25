@@ -14,6 +14,10 @@ import {
 import type { TableProps } from 'antd';
 import { Area, Pie, Bar } from '@ant-design/plots';
 import dayjs from 'dayjs';
+import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
+import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
+dayjs.extend(isSameOrAfter);
+dayjs.extend(isSameOrBefore);
 import { useSelector, useDispatch } from 'react-redux';
 import { fetchCategories } from '../features/category/categorySlice';
 import { fetchProducts } from '../features/product/productSlice';
@@ -78,28 +82,43 @@ const StatCard: React.FC<StatCardProps> = ({ icon, title, value, trend, color, u
 
 // 2. Component Biểu đồ Doanh thu
 const RevenueChart: React.FC<{ data: any[] }> = ({ data }) => {
-    const chartData = data.flatMap(item => [
-        { date: item.date, value: item.value, type: 'Doanh thu thực tế' },
-        { date: item.date, value: item.target, type: 'Mục tiêu' },
-    ]);
-
+    const chartData = data.map(item => ({ date: item.date, value: typeof item.value === 'number' && !isNaN(item.value) ? item.value : 0 }));
     const config = {
         data: chartData,
         xField: 'date',
         yField: 'value',
-        seriesField: 'type',
-        yAxis: { label: { formatter: (v: number) => `${(v / 1000).toFixed(0)}K` } },
+        yAxis: { label: { formatter: (v: number) => `${v.toLocaleString('vi-VN')} VNĐ` } },
         line: { style: { lineWidth: 2 } },
         point: { shape: 'circle', size: 3 },
-        area: { style: { fillOpacity: 0.07 } },
-        color: ['#1890ff', '#fa8c16'],
+        area: { style: { fillOpacity: 0 } },
+        color: ['#1890ff'],
         smooth: true,
         tooltip: {
-            formatter: (datum: any) => ({ name: datum.type, value: `${datum.value.toLocaleString('vi-VN')} VNĐ` }),
+            showMarkers: false,
+            showTitle: true,
+            customContent: (title: string, items: any[]) => {
+                console.log('Tooltip customContent - title:', title);
+                console.log('Tooltip customContent - items:', items);
+                if (items && items[0]) console.log('Tooltip customContent - items[0]:', items[0]);
+                if (!items || items.length === 0) return '';
+                let value: number | string = 0;
+                if (typeof items[0].value === 'number') value = items[0].value;
+                else if (items[0].data && typeof items[0].data.value === 'number') value = items[0].data.value;
+                else if (items[0].data && typeof items[0].data === 'object') value = JSON.stringify(items[0].data);
+                else value = JSON.stringify(items[0]);
+                if (typeof value === 'string' && value.startsWith('{')) {
+                    return `<div style=\"padding:8px 12px\"><b>${title}</b><br/>DEBUG: <pre>${value}</pre></div>`;
+                }
+                if (typeof value === 'number') {
+                    return `<div style=\"padding:8px 12px\"><b>${title}</b><br/>Tổng doanh thu: <b>${value.toLocaleString('vi-VN')} VNĐ</b></div>`;
+                }
+                return `<div style=\"padding:8px 12px\"><b>${title}</b><br/>Tổng doanh thu: <b>${value} VNĐ</b></div>`;
+            }
         },
-        legend: { position: 'top-right' as const },
+        legend: false,
+        style: { background: '#fff', height: '300px' },
     };
-    return <Area {...config} style={{ height: '300px' }} />;
+    return <Area {...config} />;
 };
 
 // 3. Component Biểu đồ tròn Phân loại
@@ -174,13 +193,13 @@ const TopList: React.FC<{ title: string; data: any[]; icon: React.ReactNode; ren
         title={<Space>{icon}{title}</Space>}
         bordered={false}
         style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', height: '100%' }}
-        extra={<Link>Xem tất cả</Link>}
+        // extra={<Link>Xem tất cả</Link>}
     >
         <List
             itemLayout="horizontal"
             dataSource={data}
             renderItem={(item) => (
-                <List.Item>
+                <List.Item key={item.id}>
                     <Row align="middle" gutter={16} style={{ width: '100%' }}>
                         <Col span={2}>{getRankIcon(item.rank)}</Col>
                         <Col span={18}>
@@ -200,7 +219,8 @@ const TopList: React.FC<{ title: string; data: any[]; icon: React.ReactNode; ren
 
 // --- COMPONENT DASHBOARD CHÍNH ---
 const Dashboard: React.FC = () => {
-    const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([dayjs().subtract(30, 'days'), dayjs()]);
+    // --- State cho khoảng ngày thống kê doanh thu ---
+    const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([dayjs().subtract(6, 'days'), dayjs()]);
     const dispatch = useDispatch();
     const { categories, loading } = useSelector((state: RootState) => state.category);
     const { products } = useSelector((state: RootState) => state.product);
@@ -238,38 +258,39 @@ const Dashboard: React.FC = () => {
                 const res = await axiosClient.get('/users/get-all-users', { params: { page: 1, limit: 1000 } });
                 const users = res.data || res.data?.data || res;
                 const customers = (users.data || users);
-                const now = new Date();
-                const thisMonth = now.getMonth();
-                const thisYear = now.getFullYear();
-                const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
-                const lastMonthYear = thisMonth === 0 ? thisYear - 1 : thisYear;
-                let countThisMonth = 0;
-                let countLastMonth = 0;
+                // --- Thống kê khách hàng mới theo khoảng ngày ---
+                const start = dateRange[0].startOf('day');
+                const end = dateRange[1].endOf('day');
+                const rangeDays = end.diff(start, 'day') + 1;
+                const prevStart = start.clone().subtract(rangeDays, 'day');
+                const prevEnd = start.clone().subtract(1, 'day').endOf('day');
+                let countThisRange = 0;
+                let countPrevRange = 0;
                 customers.forEach((user: any) => {
-                    const created = new Date(user.createdAt);
-                    if (created.getFullYear() === thisYear && created.getMonth() === thisMonth) {
-                        countThisMonth++;
-                    } else if (created.getFullYear() === lastMonthYear && created.getMonth() === lastMonth) {
-                        countLastMonth++;
+                    const created = dayjs(user.createdAt);
+                    if (created.isSameOrAfter(start) && created.isSameOrBefore(end)) {
+                        countThisRange++;
+                    } else if (created.isSameOrAfter(prevStart) && created.isSameOrBefore(prevEnd)) {
+                        countPrevRange++;
                     }
                 });
-                setOrdersThisMonth(countThisMonth);
-                setOrdersLastMonth(countLastMonth);
-                if (countLastMonth === 0 && countThisMonth > 0) {
-                    setOrderPercent(100);
-                } else if (countLastMonth === 0 && countThisMonth === 0) {
-                    setOrderPercent(0);
+                setNewCustomersThisMonth(countThisRange);
+                setNewCustomersLastMonth(countPrevRange);
+                if (countPrevRange === 0 && countThisRange > 0) {
+                    setCustomerPercent(100);
+                } else if (countPrevRange === 0 && countThisRange === 0) {
+                    setCustomerPercent(0);
                 } else {
-                    setOrderPercent(Math.round(((countThisMonth - countLastMonth) / countLastMonth) * 100));
+                    setCustomerPercent(Math.round(((countThisRange - countPrevRange) / countPrevRange) * 100));
                 }
             } catch (e) {
-                setOrdersThisMonth(0);
-                setOrdersLastMonth(0);
-                setOrderPercent(0);
+                setNewCustomersThisMonth(0);
+                setNewCustomersLastMonth(0);
+                setCustomerPercent(0);
             }
         };
         fetchCustomers();
-    }, [dispatch]);
+    }, [dispatch, dateRange]);
 
     useEffect(() => {
         const fetchOrders = async () => {
@@ -282,10 +303,8 @@ const Dashboard: React.FC = () => {
                 const thisYear = now.getFullYear();
                 const lastMonth = thisMonth === 0 ? 11 : thisMonth - 1;
                 const lastMonthYear = thisMonth === 0 ? thisYear - 1 : thisYear;
-                let countThisMonth = 0;
-                let countLastMonth = 0;
-                let revenueThis = 0;
-                let revenueLast = 0;
+                let revenueThisRange = 0;
+                let revenuePrevRange = 0;
                 // Tính top khách hàng thân thiết
                 const customerOrderCount: Record<string, { name: string, totalSpent: number, orders: number }> = {};
                 const productSales: Record<string, { name: string, sales: number, revenue: number }> = {};
@@ -330,32 +349,57 @@ const Dashboard: React.FC = () => {
                     return created.getFullYear() === thisYear && created.getMonth() === thisMonth && created.getDate() === today;
                 });
                 setTodayOrders(ordersToday);
-                // Doanh thu theo tháng
-                const monthMap: Record<string, { value: number; target: number }> = {};
-                for (let i = 0; i < 6; i++) {
-                    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                    const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
-                    monthMap[key] = { value: 0, target: 4000000 };
+                // --- Thống kê doanh thu theo ngày trong khoảng dateRange ---
+                const start = dateRange[0].startOf('day');
+                const end = dateRange[1].endOf('day');
+                const rangeDays = end.diff(start, 'day') + 1;
+                const prevStart = start.clone().subtract(rangeDays, 'day');
+                const prevEnd = start.clone().subtract(1, 'day').endOf('day');
+                // Tạo map ngày -> doanh thu
+                const dayMap: Record<string, { value: number; target: number }> = {};
+                let cur = start.clone();
+                while (cur.isSameOrBefore(end, 'day')) {
+                    dayMap[cur.format('YYYY-MM-DD')] = { value: 0, target: 4000000 };
+                    cur = cur.add(1, 'day');
+                }
+                // Map cho khoảng trước
+                const prevDayMap: Record<string, { value: number }> = {};
+                let prevCur = prevStart.clone();
+                while (prevCur.isSameOrBefore(prevEnd, 'day')) {
+                    prevDayMap[prevCur.format('YYYY-MM-DD')] = { value: 0 };
+                    prevCur = prevCur.add(1, 'day');
                 }
                 orderArr.forEach((order: any) => {
-                    const created = new Date(order.createdAt);
-                    const key = `${created.getFullYear()}-${created.getMonth() + 1}`;
-                    if (monthMap[key]) {
-                        monthMap[key].value += order.totalPrice || order.totalAmount || 0;
+                    const created = dayjs(order.createdAt);
+                    const key = created.format('YYYY-MM-DD');
+                    if (created.isSameOrAfter(start) && created.isSameOrBefore(end) && dayMap[key]) {
+                        dayMap[key].value += order.totalPrice || order.totalAmount || 0;
+                    }
+                    if (created.isSameOrAfter(prevStart) && created.isSameOrBefore(prevEnd) && prevDayMap[key]) {
+                        prevDayMap[key].value += order.totalPrice || order.totalAmount || 0;
                     }
                 });
-                // Tạo mảng dữ liệu cho biểu đồ, sắp xếp theo tháng tăng dần
-                const salesArr = Object.entries(monthMap)
+                // Tạo mảng dữ liệu cho biểu đồ, sắp xếp theo ngày tăng dần
+                const salesArr = Object.entries(dayMap)
                     .map(([key, v]) => {
-                        const [year, month] = key.split('-');
-                        return {
-                            date: `Tháng ${month}`,
-                            value: v.value,
-                            target: v.target,
-                        };
+                        const value = typeof v.value === 'number' && !isNaN(v.value) ? v.value : 0;
+                        console.log('Doanh thu ngày', key, 'là:', value, v);
+                        return { date: dayjs(key).format('DD/MM'), value };
                     })
-                    .sort((a, b) => Number(a.date.split(' ')[1]) - Number(b.date.split(' ')[1]));
+                    .sort((a, b) => dayjs(a.date, 'DD/MM').toDate().getTime() - dayjs(b.date, 'DD/MM').toDate().getTime());
                 setSalesData(salesArr);
+                // Tổng doanh thu trong khoảng hiện tại và khoảng trước
+                revenueThisRange = Object.values(dayMap).reduce((sum, v) => sum + v.value, 0);
+                revenuePrevRange = Object.values(prevDayMap).reduce((sum, v) => sum + v.value, 0);
+                setRevenueThisMonth(revenueThisRange);
+                setRevenueLastMonth(revenuePrevRange);
+                if (revenuePrevRange === 0 && revenueThisRange > 0) {
+                    setRevenuePercent(100);
+                } else if (revenuePrevRange === 0 && revenueThisRange === 0) {
+                    setRevenuePercent(0);
+                } else {
+                    setRevenuePercent(Math.round(((revenueThisRange - revenuePrevRange) / revenuePrevRange) * 100));
+                }
             } catch (e) {
                 setOrdersThisMonth(0);
                 setOrdersLastMonth(0);
@@ -370,7 +414,7 @@ const Dashboard: React.FC = () => {
             }
         };
         fetchOrders();
-    }, [dispatch]);
+    }, [dispatch, dateRange]);
 
     // Lọc các category cha
     const parentCategories = categories.filter(cat => cat.isRoot || !cat.parentId);
@@ -400,6 +444,7 @@ const Dashboard: React.FC = () => {
         value: totalProducts > 0 ? Math.round((parentCategoryCount[cat._id] || 0) / totalProducts * 100) : 0
     })).filter(item => item.value > 0);
 
+    // Thay đổi khoảng ngày
     const handleDateChange = (dates: any) => {
         if (dates) {
             setDateRange(dates);
@@ -426,16 +471,25 @@ const Dashboard: React.FC = () => {
 
             {/* Main Charts */}
             <Row gutter={[24, 24]}>
-                <Col xs={24} lg={16}>
+                <Col xl={24} lg={16}>
                     <Card
                         title={<Space><LineChartOutlined /> Biểu đồ Doanh thu</Space>}
                         bordered={false}
                         style={{ borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}
+                        extra={
+                            <RangePicker
+                                value={dateRange}
+                                onChange={handleDateChange}
+                                allowClear={false}
+                                format="DD/MM/YYYY"
+                                style={{ marginBottom: 8 }}
+                            />
+                        }
                     >
                         <RevenueChart data={salesData} />
                     </Card>
                 </Col>
-                <Col xs={24} lg={8}>
+                {/* <Col xs={24} lg={8}>
                     <Card
                         title={<Space><PieChartOutlined /> Phân bố Doanh thu theo Danh mục</Space>}
                         bordered={false}
@@ -443,11 +497,11 @@ const Dashboard: React.FC = () => {
                     >
                         <CategoryPieChart data={categoryPieData} />
                     </Card>
-                </Col>
+                </Col> */}
             </Row>
 
             {/* Recent Orders */}
-            <Row>
+            {/* <Row>
                 <Col span={24}>
                      <Card
                         title="Đơn hàng trong ngày"
@@ -458,7 +512,7 @@ const Dashboard: React.FC = () => {
                         <RecentOrdersTable data={todayOrders} />
                     </Card>
                 </Col>
-            </Row>
+            </Row> */}
 
             {/* Top Lists */}
             <Row gutter={[24, 24]}>

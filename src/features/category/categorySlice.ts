@@ -60,7 +60,23 @@ export const createCategory = createAsyncThunk(
     isRoot: boolean;
   }, { rejectWithValue }) => {
     try {
-      const response = await axiosClient.post('/category/create', data);
+      // Prepare the request data, only include parentId if it's defined
+      const requestData: any = {
+        name: data.name,
+        isRoot: data.isRoot,
+      };
+      
+      // Only add parentId if it's defined (not undefined or null)
+      if (data.parentId !== undefined && data.parentId !== null) {
+        requestData.parentId = data.parentId;
+      }
+      
+      // Only add categoryType if it's defined
+      if (data.categoryType !== undefined) {
+        requestData.categoryType = data.categoryType;
+      }
+      
+      const response = await axiosClient.post('/category/create', requestData);
       // Assuming the API response for create is { success: true, data: Category }
       return response.data;
     } catch (error: any) {

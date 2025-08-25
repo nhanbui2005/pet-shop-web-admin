@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Layout as AntLayout,
   Menu,
@@ -28,8 +28,11 @@ import {
   InboxOutlined,
   TagsOutlined,
   BuildOutlined, // New icon for Store Management
+  BookOutlined, // Icon for Blogs
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
+import { useDispatch } from 'react-redux';
+import { logout } from '../features/auth/authSlice';
 
 const { Header, Sider, Content } = AntLayout;
 const { Title } = Typography; // Destructure Title
@@ -105,6 +108,20 @@ const menuItems = [
     label: <Link to="/notifications">Thông báo</Link>,
     title: 'Quản lý Thông báo'
   },
+  // Thêm tab Hỗ trợ khách hàng
+  { 
+    key: '/support', 
+    icon: <UserSwitchOutlined />, 
+    label: <Link to="/support">Hỗ trợ khách hàng</Link>,
+    title: 'Hỗ trợ khách hàng'
+  },
+  // Thêm tab Blogs
+  { 
+    key: '/blogs', 
+    icon: <BookOutlined />, 
+    label: <Link to="/blogs">Bài viết</Link>,
+    title: 'Quản lý Bài viết'
+  },
 ];
 
 const userMenuItems: MenuProps['items'] = [
@@ -133,6 +150,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const { token } = theme.useToken();
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   // =================================================================
   // STEP 2: Tìm title và các key cần thiết dựa trên location
@@ -185,7 +204,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       >
         <div style={{ height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <img src="/logo192.png" alt="logo" style={{ width: 32, height: 32 }} />
+            {/* <img src="/logo192.png" alt="logo" style={{ width: 32, height: 32 }} /> */}
             {!collapsed && (
               <span style={{ fontSize: 18, fontWeight: 700, color: token.colorPrimary, letterSpacing: 1 }}>
                 PET SERVICE
@@ -238,10 +257,21 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
             {/* RIGHT SIDE: ACTIONS */}
             <Space size="middle">
-                <Badge count={3} size="small">
+                {/* <Badge count={3} size="small">
                   <Button type="text" shape="circle" icon={<BellOutlined style={{ fontSize: 18 }} />} />
-                </Badge>
-                <Dropdown menu={{ items: userMenuItems }} placement="bottomRight" arrow>
+                </Badge> */}
+                <Dropdown 
+                  menu={{ 
+                    items: userMenuItems, 
+                    onClick: ({ key }) => {
+                      if (key === 'logout') {
+                        localStorage.removeItem('accessToken');
+                        dispatch(logout());
+                        navigate('/login');
+                      }
+                    }
+                  }} 
+                  placement="bottomRight" arrow>
                   <Space style={{ cursor: 'pointer' }}>
                     <Avatar style={{ backgroundColor: token.colorPrimary }}>A</Avatar>
                     <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>

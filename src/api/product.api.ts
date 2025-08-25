@@ -1,3 +1,4 @@
+
 import axiosClient from './axiosClient';
 
 export const createProduct = (data: any) => {
@@ -8,6 +9,8 @@ export const createProduct = (data: any) => {
 };
 
 export const getVariantsWithStockHistory = (productId: string) => {
+  console.log(productId);
+  
   return axiosClient.get(`/product-variant/by-product/${productId}/with-stock-history`);
 };
 

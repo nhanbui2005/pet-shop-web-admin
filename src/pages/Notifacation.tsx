@@ -77,7 +77,9 @@ const NotificationManagement: React.FC = () => {
         const fetchApiNotifications = async () => {
             setApiLoading(true);
             try {
-                const res = await axiosClient.get(`/notification?page=${page}&limit=${limit}`);
+                const res = await axiosClient.get(`/notification/admin?page=${page}&limit=${limit}`);
+                console.log(res);
+                
                 setApiNotifications(res.data.data || []);
                 setApiNotificationsTotal(res.data.total || 0);
             } catch (error) {
@@ -167,6 +169,8 @@ const NotificationManagement: React.FC = () => {
     const handleSendBroadcast = async () => {
         try {
             const values = await sendForm.validateFields();
+            console.log(values);
+            
             setSendLoading(true);
 
             const createNotificationDto = {
@@ -188,7 +192,9 @@ const NotificationManagement: React.FC = () => {
                     'Content-Type': 'multipart/form-data',
                 },
             });
-            message.success(res.message || 'Đã gửi broadcast thành công!');
+            console.log(res);
+            
+            message.success( 'Đã gửi broadcast thành công!');
             sendForm.resetFields();
         } catch (error: any) {
             console.error('Lỗi khi gửi broadcast:', error);
@@ -211,7 +217,7 @@ const NotificationManagement: React.FC = () => {
             };
 
             const res = await axiosClient.post('/notification/admin-send-to-all', messagingPayload);
-            message.success(res.message || 'Đã gửi thông báo cho tất cả người dùng thành công!');
+            message.success('Đã gửi thông báo cho tất cả người dùng thành công!');
             sendForm.resetFields();
         } catch (error: any) {
             console.error('Lỗi khi gửi thông báo cho tất cả người dùng:', error);
@@ -221,23 +227,23 @@ const NotificationManagement: React.FC = () => {
         }
     };
 
-    const handleMarkApiNotificationAsRead = async (id: string) => {
-        setApiLoading(true);
-        try {
-            const res = await axiosClient.post('/notification/read', { notificationIds: [id] });
-            if (res.success) {
-                setApiNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
-                message.success('Đã đánh dấu là đã đọc!');
-            } else {
-                message.error(res.message || 'Đánh dấu đã đọc thất bại.');
-            }
-        } catch (error: any) {
-            console.error("Lỗi khi đánh dấu thông báo đã đọc:", error);
-            message.error(error.data?.message || 'Đã xảy ra lỗi khi đánh dấu thông báo đã đọc.');
-        } finally {
-            setApiLoading(false);
-        }
-    };
+    // const handleMarkApiNotificationAsRead = async (id: string) => {
+    //     setApiLoading(true);
+    //     try {
+    //         const res = await axiosClient.post('/notification/read', { notificationIds: [id] });
+    //         if (res.) {
+    //             setApiNotifications(prev => prev.map(n => n._id === id ? { ...n, isRead: true } : n));
+    //             message.success('Đã đánh dấu là đã đọc!');
+    //         } else {
+    //             message.error(res.message || 'Đánh dấu đã đọc thất bại.');
+    //         }
+    //     } catch (error: any) {
+    //         console.error("Lỗi khi đánh dấu thông báo đã đọc:", error);
+    //         message.error(error.data?.message || 'Đã xảy ra lỗi khi đánh dấu thông báo đã đọc.');
+    //     } finally {
+    //         setApiLoading(false);
+    //     }
+    // };
 
     const userColumns = [
         { title: 'Tiêu đề', dataIndex: 'title', key: 'title', render: (text: string) => <Typography.Text strong>{text}</Typography.Text> },
@@ -360,17 +366,17 @@ const NotificationManagement: React.FC = () => {
             title: 'Trạng thái đọc', dataIndex: 'isRead', key: 'isRead',
             render: (isRead: boolean) => <Tag color={isRead ? 'success' : 'warning'}>{isRead ? 'Đã đọc' : 'Chưa đọc'}</Tag>
         },
-        {
-            title: 'Thao tác', key: 'action', width: 100, render: (_: any, record: ApiNotification) => (
-                <Space>
-                    {!record.isRead && (
-                        <Tooltip title="Đánh dấu đã đọc">
-                            <Button icon={<BellOutlined />} onClick={() => handleMarkApiNotificationAsRead(record._id)} />
-                        </Tooltip>
-                    )}
-                </Space>
-            )
-        }
+        // {
+        //     title: 'Thao tác', key: 'action', width: 100, render: (_: any, record: ApiNotification) => (
+        //         <Space>
+        //             {!record.isRead && (
+        //                 <Tooltip title="Đánh dấu đã đọc">
+        //                     <Button icon={<BellOutlined />} onClick={() => handleMarkApiNotificationAsRead(record._id)} />
+        //                 </Tooltip>
+        //             )}
+        //         </Space>
+        //     )
+        // }
     ];
 
     const renderModalContent = () => {
@@ -421,7 +427,7 @@ const NotificationManagement: React.FC = () => {
                     )
                 }
             >
-                <Tabs.TabPane tab={<Space><UserOutlined />Thông báo cho User</Space>} key="user">
+                {/* <Tabs.TabPane tab={<Space><UserOutlined />Thông báo cho User</Space>} key="user">
                     <Table
                         columns={userColumns}
                         dataSource={userNotifications}
@@ -449,7 +455,7 @@ const NotificationManagement: React.FC = () => {
                         }}
                         locale={{ emptyText: 'Không có nhắc nhở nào cho quản trị viên. Vui lòng tạo mới.' }}
                     />
-                </Tabs.TabPane>
+                </Tabs.TabPane> */}
 
                 <Tabs.TabPane tab={<Space><SendOutlined />Gửi Thông Báo</Space>} key="send">
                     <Card title="Gửi Thông Báo Mới" className="rounded-lg shadow-md">

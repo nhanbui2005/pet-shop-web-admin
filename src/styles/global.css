@@ -298,3 +298,10 @@
 .ant-col {
   padding: 0 8px !important;
 } 
+
+.unread-row {
+  background: #fff1f0 !important;
+}
+tr.unread-row > td {
+  background: #fff1f0 !important;
+} 

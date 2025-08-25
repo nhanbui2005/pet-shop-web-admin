@@ -44,3 +44,7 @@ export const updateCategory = (data: CategoryEditDto) => {
 export const getCategoriesByType = (type: CategoryType) => {
   return axiosClient.get(`/category/get-categories?type=${type}`);
 }; 
+
+export const getChildCategories = (parentId: string) => {
+  return axiosClient.get('/category/get-child-categories/'+parentId);
+}; 

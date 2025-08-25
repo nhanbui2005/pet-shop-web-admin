@@ -6,7 +6,28 @@ import TinyMCEEditor from './TinyMCEEditor';
 
 const { Option } = Select;
 
-const ProductFormModal = ({
+interface ProductFormModalProps {
+  visible: boolean;
+  onCancel: () => void;
+  onFinish: (values: any) => void;
+  form: any;
+  attributes: any[];
+  setAttributes: (attrs: any[]) => void;
+  variants: any[];
+  setVariants: (vars: any[]) => void;
+  suppliers: any[];
+  allCategories: any[];
+  selectedCategory: string;
+  setSelectedCategory: (id: string) => void;
+  attributeValueInputs: any;
+  setAttributeValueInputs: (inputs: any) => void;
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  renderAttributeFields: () => React.ReactNode;
+  getVariantColumns: () => any[];
+}
+
+const ProductFormModal: React.FC<ProductFormModalProps> = ({
   visible,
   onCancel,
   onFinish,
@@ -57,7 +78,11 @@ const ProductFormModal = ({
                 label="Danh mục"
                 rules={[{ required: true, message: 'Vui lòng chọn danh mục!' }]}
               >
-                <CategorySelect onChange={setSelectedCategory} value={selectedCategory} />
+                <CategorySelect 
+                  onChange={setSelectedCategory} 
+                  value={selectedCategory} 
+                  allowAnyLevel={true}
+                />
               </Form.Item>
             </Col>
             <Col span={5}>
@@ -68,7 +93,7 @@ const ProductFormModal = ({
               >
                 <Select placeholder="Chọn nhà cung cấp">
                   {suppliers.map((supplier) => (
-                    <Option key={supplier._id} value={supplier}>{supplier.name}</Option>
+                    <Option key={supplier._id} value={supplier._id}>{supplier.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
@@ -179,4 +204,4 @@ const ProductFormModal = ({
   </Modal>
 );
 
-export default ProductFormModal; 
+export default ProductFormModal;
